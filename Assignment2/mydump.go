@@ -75,10 +75,8 @@ func main() {
 
 	defer handle.Close()
 
-	fmt.Println("Setting BPF Filter")
 	handle.SetBPFFilter(bpfFilter)
 
-	fmt.Println("Starting packet capture")
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
@@ -120,6 +118,13 @@ func generateOutputForPacket(packet gopacket.Packet) {
 		if strings.Contains(ipPacket.Protocol.String(), "ICMP") {
 			protocolType = "ICMP"
 		}
+		srcIpAddr = ipPacket.SrcIP.String()
+		destIpAddr = ipPacket.DstIP.String()
+	}
+
+	ipV6Layer := packet.Layer(layers.LayerTypeIPv6)
+	if ipV6Layer != nil {
+		ipPacket, _ := ipV6Layer.(*layers.IPv6)
 		srcIpAddr = ipPacket.SrcIP.String()
 		destIpAddr = ipPacket.DstIP.String()
 	}
@@ -170,6 +175,11 @@ func generateOutputForPacket(packet gopacket.Packet) {
 	}
 
 	if protocolType == "ICMP" {
+		record = append(record, srcIpAddr, "->", destIpAddr, protocolType)
+	}
+
+	if protocolType == "" {
+		protocolType = "OTHER"
 		record = append(record, srcIpAddr, "->", destIpAddr, protocolType)
 	}
 
