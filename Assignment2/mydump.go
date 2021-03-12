@@ -163,6 +163,12 @@ func generateOutputForPacket(packet gopacket.Packet) {
 		if tcpPacket.NS {
 			record = append(record, "NS")
 		}
+
+		// record = append(record, "TCPOptions")
+		// for _, v := range tcpPacket.Options {
+		// 	record = append(record, v.OptionType.String(), hex.Dump(v.OptionData))
+		// }
+
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
