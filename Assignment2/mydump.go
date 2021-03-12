@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
-
-	"reflect"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -78,139 +77,72 @@ func main() {
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
-		// Process packet here
-		//fmt.Println(packet)
-		fmt.Println("______ANOTHER PACKET!______")
-		printPacketInfo(packet)
+		generateOutputForPacket(packet)
 	}
 
 }
 
-func printPacketInfo(packet gopacket.Packet) {
+func generateOutputForPacket(packet gopacket.Packet) {
 
-	fmt.Println("Printing packet info::")
-
-	// var timestamp string
-	// var srcMacAddr, destMacAddr, etherType, srcIpAddr, destIpAddr, protocolType //string
-	var destIpAddr, protocolType, srcIpAddr string
+	var timestamp, destIpAddr, protocolType, srcIpAddr string
 	var pktLen, srcPort, destPort int
-	// var tcpFlags []string
-	var record = make([]string, 15)
+	var record = make([]string, 0)
 
-	// Let's see if the packet is an ethernet packet
-	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
-	if ethernetLayer != nil {
-		// fmt.Println("Ethernet layer detected.")
-		ethernetPacket, _ := ethernetLayer.(*layers.Ethernet)
+	timestamp = packet.Metadata().CaptureInfo.Timestamp.String()
+	record = append(record, timestamp)
+	pktLen = packet.Metadata().CaptureInfo.CaptureLength
 
-		fmt.Println(reflect.ValueOf(ethernetPacket.SrcMAC).Kind())
-
-		srcMacAddr := ethernetPacket.SrcMAC
-		destMacAddr := ethernetPacket.DstMAC
-		etherType := ethernetPacket.EthernetType
-
-		record = append(record, string(srcMacAddr), "->", string(destMacAddr), "type", string(etherType))
+	etherLayer := packet.Layer(layers.LayerTypeEthernet)
+	if etherLayer != nil {
+		ethPacket, _ := etherLayer.(*layers.Ethernet)
+		srcMacAddr := ethPacket.SrcMAC.String()
+		destMacAddr := ethPacket.DstMAC.String()
+		etherType := ethPacket.EthernetType.String()
+		record = append(record, srcMacAddr, "->", destMacAddr, "type", etherType)
 	}
 
-	app := packet.ApplicationLayer()
-	payload := app.Payload()
-	pktLen = len(payload)
+	record = append(record, "len", strconv.Itoa(pktLen))
 
-	record = append(record, "len", string(pktLen))
-
-	// Let's see if the packet is IP (even though the ether type told us)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
-		fmt.Println("IPv4 layer detected.")
-
-		ip, _ := ipLayer.(*layers.IPv4)
-		// fmt.Println(ip)
-		// fmt.Println(ip.Protocol)
-
-		srcIpAddr = string(ip.SrcIP)
-		destIpAddr = string(ip.DstIP)
-		// pktLen := ip.Length
-
-		// append(record, string(srcIpAddr), string(destIpAddr))
-
-		// fmt.Println("!!!ip.Length: ", pktLen)
-
-		if strings.Contains(string(ip.Protocol), "ICMP") {
-			fmt.Println("Protocol: ", ip.Protocol)
+		ipPacket, _ := ipLayer.(*layers.IPv4)
+		if strings.Contains(ipPacket.Protocol.String(), "ICMP") {
 			protocolType = "ICMP"
 		}
+		srcIpAddr = ipPacket.SrcIP.String()
+		destIpAddr = ipPacket.DstIP.String()
 	}
 
-	// Let's see if the packet is TCP
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	if tcpLayer != nil {
-		fmt.Println("TCP layer detected.")
-		tcp, _ := tcpLayer.(*layers.TCP)
-
-		srcPort = int(tcp.SrcPort)
-		destPort = int(tcp.DstPort)
 		protocolType = "TCP"
-
-		record = append(record, srcIpAddr+"."+string(srcPort), "->", destIpAddr+"."+string(destPort))
-		record = append(record, protocolType)
-		// TODO: Add more of these
-		if tcp.SYN {
-			// tcpFlags[0] = "SYN"
+		tcpPacket, _ := tcpLayer.(*layers.TCP)
+		srcPort = int(tcpPacket.SrcPort)
+		destPort = int(tcpPacket.DstPort)
+		record = append(record, srcIpAddr+"."+strconv.Itoa(srcPort), "->", destIpAddr+"."+strconv.Itoa(destPort), protocolType)
+		if tcpPacket.SYN {
 			record = append(record, "SYN")
 		}
-		if tcp.ACK {
-			// tcpFlags[1] = "ACK"
+		if tcpPacket.ACK {
 			record = append(record, "ACK")
 		}
 	}
 
 	udpLayer := packet.Layer(layers.LayerTypeUDP)
 	if udpLayer != nil {
-		fmt.Println("UDP layer detected.")
-		udp, _ := udpLayer.(*layers.UDP)
-
-		srcPort := int(udp.SrcPort)
-		destPort := int(udp.DstPort)
 		protocolType = "UDP"
-		record = append(record, srcIpAddr+"."+string(srcPort), "->", destIpAddr+"."+string(destPort))
-		record = append(record, protocolType)
-
-		// udp.Payload
+		udpPacket, _ := udpLayer.(*layers.UDP)
+		srcPort := int(udpPacket.SrcPort)
+		destPort := int(udpPacket.DstPort)
+		record = append(record, srcIpAddr+"."+strconv.Itoa(srcPort), "->", destIpAddr+"."+strconv.Itoa(destPort), protocolType)
 	}
 
 	if protocolType == "ICMP" {
-		record = append(record, protocolType)
+		record = append(record, srcIpAddr, "->", destIpAddr, protocolType)
 	}
 
-	// Iterate over all layers, printing out each layer type
-	fmt.Println("All packet layers:")
-	for _, layer := range packet.Layers() {
-		fmt.Println("- ", layer.LayerType())
-	}
-
-	fmt.Println()
-	fmt.Println()
-
-	fmt.Println("Printing record:")
 	fmt.Println(strings.Join(record, " "))
 
-	// fmt.Print(srcMacAddr + " -> " + destMacAddr + " type " + etherType + " len " + strconv.Itoa(pktLen) + " " + srcIpAddr + "." + strconv.Itoa(srcPort) + " -> " + destIpAddr + "." + strconv.Itoa(destPort) + " " + protocolType + " " + strings.Join(tcpFlags, " "))
-
-	/*// When iterating through packet.Layers() above,
-	// if it lists Payload layer then that is the same as
-	// this applicationLayer. applicationLayer contains the payload
-	applicationLayer := packet.ApplicationLayer()
-	if applicationLayer != nil {
-		fmt.Println("Application layer/Payload found.")
-		fmt.Printf("%s\n", applicationLayer.Payload())
-
-		// Search for a string inside the payload
-		if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
-			fmt.Println("HTTP found!")
-		}
-	}*/
-
-	// Check for errors
 	if err := packet.ErrorLayer(); err != nil {
 		fmt.Println("Error decoding some part of the packet:", err)
 	}
