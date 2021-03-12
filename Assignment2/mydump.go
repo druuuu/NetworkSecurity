@@ -120,11 +120,32 @@ func generateOutputForPacket(packet gopacket.Packet) {
 		srcPort = int(tcpPacket.SrcPort)
 		destPort = int(tcpPacket.DstPort)
 		record = append(record, srcIpAddr+"."+strconv.Itoa(srcPort), "->", destIpAddr+"."+strconv.Itoa(destPort), protocolType)
+		if tcpPacket.FIN {
+			record = append(record, "FIN")
+		}
 		if tcpPacket.SYN {
 			record = append(record, "SYN")
 		}
+		if tcpPacket.RST {
+			record = append(record, "RST")
+		}
+		if tcpPacket.PSH {
+			record = append(record, "PSH")
+		}
 		if tcpPacket.ACK {
 			record = append(record, "ACK")
+		}
+		if tcpPacket.URG {
+			record = append(record, "URG")
+		}
+		if tcpPacket.ECE {
+			record = append(record, "ECE")
+		}
+		if tcpPacket.CWR {
+			record = append(record, "CWR")
+		}
+		if tcpPacket.NS {
+			record = append(record, "NS")
 		}
 	}
 
