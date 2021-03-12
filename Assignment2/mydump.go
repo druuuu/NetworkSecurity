@@ -18,22 +18,20 @@ import (
 
 func main() {
 
-	var iface string
-	var fileName string
-	var bpfFilter string
+	var iface, fileName, bpfFilter string
 
 	// fmt.Println(reflect.ValueOf(os.Args).Kind())
 
 	for i, v := range os.Args {
 		if v == "-i" {
 			iface = os.Args[i+1]
-			fmt.Println("Interface: ", iface)
+			fmt.Println("Interface specified by user: ", iface)
 		} else if v == "-r" && iface == "" {
 			fileName = os.Args[i+1]
-			fmt.Println("FileName: ", fileName)
+			fmt.Println("FileName to read packets from: ", fileName)
 		} else if v == "-s" {
 			bpfFilter = os.Args[i+1]
-			fmt.Println("BPF filter specified: ", bpfFilter)
+			fmt.Println("BPF filter specified by user: ", bpfFilter)
 		}
 	}
 
@@ -47,11 +45,9 @@ func main() {
 	var handle *pcap.Handle
 
 	// Print device information
-	fmt.Println("Devices found:")
 	for _, device := range devices {
 
 		if iface == "" {
-			// TODO: Change to incorporate read from file
 			currDevice = device
 			break
 		}
@@ -64,12 +60,19 @@ func main() {
 
 	// Open device
 	// handle, err = pcap.OpenLive(currDevice.Name, snapshot_len, promiscuous, timeout)
-	handle, err = pcap.OpenLive(currDevice.Name, 1024, false, 30)
 
-	fmt.Println("Interface handle opened")
+	if fileName != "" {
+		fmt.Println("Opening file: ", fileName)
+		handle, err = pcap.OpenOffline(fileName)
+	} else {
+		fmt.Println("Opening live connection on interface: ", currDevice.Name)
+		handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer handle.Close()
 
 	fmt.Println("Setting BPF Filter")
