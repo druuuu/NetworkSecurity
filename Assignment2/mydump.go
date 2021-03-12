@@ -3,6 +3,8 @@
 package main
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -88,6 +90,8 @@ func generateOutputForPacket(packet gopacket.Packet) {
 	var pktLen, srcPort, destPort int
 	var record = make([]string, 0)
 
+	fmt.Println()
+
 	timestamp = packet.Metadata().CaptureInfo.Timestamp.String()
 	record = append(record, timestamp)
 	pktLen = packet.Metadata().CaptureInfo.CaptureLength
@@ -97,8 +101,12 @@ func generateOutputForPacket(packet gopacket.Packet) {
 		ethPacket, _ := etherLayer.(*layers.Ethernet)
 		srcMacAddr := ethPacket.SrcMAC.String()
 		destMacAddr := ethPacket.DstMAC.String()
-		etherType := ethPacket.EthernetType.String()
-		record = append(record, srcMacAddr, "->", destMacAddr, "type", etherType)
+		etherType := ethPacket.EthernetType
+
+		// Converting etherType from enum to the hex format as required to be printed
+		b := make([]byte, 2)
+		binary.BigEndian.PutUint16(b, uint16(etherType))
+		record = append(record, srcMacAddr, "->", destMacAddr, "type", "0x"+hex.EncodeToString(b))
 	}
 
 	record = append(record, "len", strconv.Itoa(pktLen))
@@ -163,6 +171,11 @@ func generateOutputForPacket(packet gopacket.Packet) {
 	}
 
 	fmt.Println(strings.Join(record, " "))
+
+	applicationLayer := packet.ApplicationLayer()
+	if applicationLayer != nil {
+		fmt.Printf("%s", hex.Dump(applicationLayer.Payload()))
+	}
 
 	if err := packet.ErrorLayer(); err != nil {
 		fmt.Println("Error decoding some part of the packet:", err)
