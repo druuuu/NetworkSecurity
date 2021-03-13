@@ -197,6 +197,6 @@ func generateOutputForPacket(packet gopacket.Packet) {
 	}
 
 	if err := packet.ErrorLayer(); err != nil {
-		fmt.Println("Error decoding some part of the packet:", err)
+		fmt.Println("Error during packet analysis:", err)
 	}
 }
