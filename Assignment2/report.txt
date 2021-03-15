@@ -34,7 +34,7 @@ sudo go run . -i "eth0" -s "jpg"
 You can also specify a BPF filter that will enable MyDump to capture only the packets
 that meet the condition specified by the filter, in the following way:
 
-sudo go run . -i "eth0" -s "jpg" "tcp port 80"
+sudo go run . -i "eth0" -s "jpg" "tcp"
 
 
 
@@ -90,9 +90,9 @@ open a connection handle and set a bpf filter.
 It uses the "github.com/google/gopacket" package to generate a package source using
 the handle, and to obtain the packets.
 
-Then for each captured packet, the generateOutputForPacket function is called that
-will extract different fields and parameters from the packet. The packet obtained is
-of the gopacket.Packet type. MyDump extracts the time of capture of the packet, and
+Then for each captured packet which fulfils the pattern criteria, the generateOutputForPacket
+function is called that will extract different fields and parameters from the packet. The packet
+obtained is of the gopacket.Packet type. MyDump extracts the time of capture of the packet, and
 its length using the metadata of the packet. All the other info about the packet
 is extracted from different layers of the packet.
 
