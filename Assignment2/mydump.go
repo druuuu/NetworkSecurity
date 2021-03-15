@@ -90,7 +90,7 @@ func main() {
 	for packet := range packetSource.Packets() {
 		if (pattern=="") {
 			generateOutputForPacket(packet)
-		} else if (strings.Contains(packet.Payload(), pattern)) {
+		} else if (strings.Contains(packet.Data(), pattern)) {
 			generateOutputForPacket(packet)
 		}
 	}
