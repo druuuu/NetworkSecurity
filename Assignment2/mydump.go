@@ -33,7 +33,7 @@ func main() {
 		} else if v == "-s" {
 			pattern = os.Args[i+1]
 			fmt.Println("Pattern specified by user: ", pattern)
-		} else if i==0 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-s" {
+		} else if i==1 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-s" {
 			actualBpfFilter = os.Args[i]
 			fmt.Println("BPF filter specified by user: ", actualBpfFilter)
 		} else if i > 0 && os.Args[i-1] != "-r" && os.Args[i-1] != "-i" && os.Args[i-1] != "-s" {
