@@ -18,8 +18,9 @@ import (
 
 func main() {
 
-	var iface, fileName, bpfFilter string
+	var iface, fileName, pattern string
 
+	var actualBpfFilter string
 	// fmt.Println(reflect.ValueOf(os.Args).Kind())
 
 	for i, v := range os.Args {
@@ -30,8 +31,16 @@ func main() {
 			fileName = os.Args[i+1]
 			fmt.Println("FileName to read packets from: ", fileName)
 		} else if v == "-s" {
-			bpfFilter = os.Args[i+1]
-			fmt.Println("BPF filter specified by user: ", bpfFilter)
+			pattern = os.Args[i+1]
+			fmt.Println("Pattern specified by user: ", pattern)
+		}
+		else if i==0 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-s" {
+			actualBpfFilter = os.Args[i]
+			fmt.Println("BPF filter specified by user: ", actualBpfFilter)
+		}
+		else if i > 0 && os.Args[i-1] != "-r" && os.Args[i-1] != "-i" && os.Args[i-1] != "-s" {
+			actualBpfFilter = os.Args[i]
+			fmt.Println("BPF filter specified by user: ", actualBpfFilter)
 		}
 	}
 
@@ -75,12 +84,25 @@ func main() {
 
 	defer handle.Close()
 
-	handle.SetBPFFilter(bpfFilter)
+	// handle.SetBPFFilter(pattern)
+	handle.SetBPFFilter(actualBpfFilter)
 
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
-		generateOutputForPacket(packet)
+		
+		applicationLayer := packet.ApplicationLayer()
+		if applicationLayer != nil {
+			if (pattern=="") {
+				generateOutputForPacket(packet)
+			}
+			else if (strings.Contains(applicationLayer.Payload().String(), pattern)) {
+				generateOutputForPacket(packet)
+			}
+		}
+		else {
+			generateOutputForPacket(packet)
+		}
 	}
 
 }
@@ -188,11 +210,11 @@ func generateOutputForPacket(packet gopacket.Packet) {
 		protocolType = "OTHER"
 		record = append(record, srcIpAddr, "->", destIpAddr, protocolType)
 	}
-
+	
 	fmt.Println(strings.Join(record, " "))
 
 	applicationLayer := packet.ApplicationLayer()
-	if applicationLayer != nil {
+	if applicationLayer != nil {	
 		fmt.Printf("%s", hex.Dump(applicationLayer.Payload()))
 	}
 
