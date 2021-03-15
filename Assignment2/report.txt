@@ -1,0 +1,134 @@
+
+MyDump : A tiny packet capturing application written in go
+
+MyDump is a passive network monitoring application written in golang
+using the GoPacket library. It can capture traffic from a network interface,
+or read packets from a given pcap trace file.
+
+
+
+To run MyDump, extract the contents of the tarball, and then from inside the
+directory that contains the mydump.go file, open a terminal and run the following
+command:
+
+sudo go run .
+
+This will start the packet capture on a default network interface that mydump
+will automatically find on your machine.
+
+Now, if you want MyDump to capture packets on a particular network interface,
+you can specify that interface by using the -i option:
+
+sudo go run . -i "eth0"
+
+If you want MyDump to read packets from a pcap trace file, then you can do that
+using the following command:
+
+sudo go run . -r "filename.pcap"
+
+You can also specify a string pattern to filter packets on, using the -s option.
+This will cause mydump to only print those packets that contain the given string.
+
+sudo go run . -i "eth0" -s "jpg"
+
+You can also specify a BPF filter that will enable MyDump to capture only the packets
+that meet the condition specified by the filter, in the following way:
+
+sudo go run . -i "eth0" -s "jpg" "tcp port 80"
+
+
+
+
+MyDump displays the following info about a captured packet:
+timestamp
+source & destination MAC addresses,
+EtherType (as a hexadecimal number),
+packet length,
+source and destination IP addresses,
+protocol type ("TCP", "UDP", "ICMP", or "OTHER"),
+source and destination ports (for TCP and UDP packets),
+the TCP flags in case of TCP packets,
+and the raw content of the packet payload in hex
+
+
+
+
+EXAMPLE:
+
+In another terminal, the following traffic was generated:
+
+ping -c1 8.8.8.8
+
+Output of 'sudo go run . "icmp" is as follows:
+
+BPF filter specified by user:  icmp
+Opening live connection on interface:  ens33
+
+2021-03-12 22:54:37.93964 -0500 EST 00:0c:29:f3:56:b9 -> 00:50:56:f8:27:3e type 0x0800 len 98 192.168.111.128 -> 8.8.8.8 ICMP
+00000000  7d 37 4c 60 00 00 00 00  5e 56 0e 00 00 00 00 00  |}7L`....^V......|
+00000010  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  |................|
+00000020  20 21 22 23 24 25 26 27  28 29 2a 2b 2c 2d 2e 2f  | !"#$%&'()*+,-./|
+00000030  30 31 32 33 34 35 36 37                           |01234567|
+
+2021-03-12 22:54:37.948573 -0500 EST 00:50:56:f8:27:3e -> 00:0c:29:f3:56:b9 type 0x0800 len 98 8.8.8.8 -> 192.168.111.128 ICMP
+00000000  7d 37 4c 60 00 00 00 00  5e 56 0e 00 00 00 00 00  |}7L`....^V......|
+00000010  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  |................|
+00000020  20 21 22 23 24 25 26 27  28 29 2a 2b 2c 2d 2e 2f  | !"#$%&'()*+,-./|
+00000030  30 31 32 33 34 35 36 37                           |01234567|
+
+
+
+
+Implementation Details:
+
+MyDump is written in go and uses the "github.com/google/gopacket" library for packet
+capture and analysis.
+
+MyDump uses the "github.com/google/gopacket/pcap" package to find network devices,
+open a connection handle and set a bpf filter.
+
+It uses the "github.com/google/gopacket" package to generate a package source using
+the handle, and to obtain the packets.
+
+Then for each captured packet, the generateOutputForPacket function is called that
+will extract different fields and parameters from the packet. The packet obtained is
+of the gopacket.Packet type. MyDump extracts the time of capture of the packet, and
+its length using the metadata of the packet. All the other info about the packet
+is extracted from different layers of the packet.
+
+gopacket and "github.com/google/gopacket/layers" enable us to extract different
+layers of the packet using packet.Layer(layers."LayerName") method.
+
+Ethernet layer::
+The source and destination MAC addresses, and ethernetType are extracted from this layer.
+
+IPv4 layer::
+Source and destination IP addresses are extracted from this layer. If the IP protocol
+is ICMP, the protocolType field is set to ICMP.
+
+IPv6 layer::
+If the packet uses IPv6, then the source and destination IP addresses are extracted
+from this layer.
+
+TCP layer::
+Source and destination ports are extracted from this layer. protocolType is set to TCP.
+TCP flags are extracted and added to the record slice.
+
+UDP layer::
+If it is a UDP packet and not a TCP packet, source and destination ports are extracted
+from this layer. protocolType is set to UDP.
+
+If no protocolType was set till now, then the protocolType is set to "OTHER".
+
+At this point, all fields are extracted and appended in the record slice. At this point,
+The elements of the record slice are joined using " " and printed in the output.
+
+The content of the packet is extracted from the Payload of the application layer of 
+the packet. This raw content is displayed in the output in hex form using hex.Dump().
+
+If there are any errors during packet analysis, then the message displayed at the end
+is "Error during packet analysis:", along with the actual error. This error is extracted
+from the ErrorLayer of the packet.
+
+
+
