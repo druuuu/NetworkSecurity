@@ -1,0 +1,2 @@
+192.168.111.129 *.bankofamerica.com
+192.168.111.129 *.tcpdump.org
