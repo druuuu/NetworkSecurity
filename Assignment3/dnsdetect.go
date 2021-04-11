@@ -86,33 +86,27 @@ const MAX_SECONDS_ELAPSED = 60
 
 func analyzePacket(packet gopacket.Packet) {
 
-	// fmt.Println("=============== New Packet ===============")
-
-	// fmt.Println()
-	// fmt.Println()
-	// fmt.Println(questionToAnswerMap)
-	// fmt.Println()
-	// fmt.Println()
-
+	fmt.Println()
+	fmt.Println("======== New Packet =========")
 	packetTime := packet.Metadata().Timestamp
-	srcIp := ""
-	dstIp := ""
-	// protocol := ""
-	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	if ipLayer != nil {
-		fmt.Println("IPv4 packet")
-		ip, _ := ipLayer.(*layers.IPv4)
-		srcIp = ip.SrcIP.String()
-		dstIp = ip.DstIP.String()
-	}
+	// srcIp := ""
+	// dstIp := ""
 
-	ipLayer = packet.Layer(layers.LayerTypeIPv6)
-	if ipLayer != nil {
-		fmt.Println("IPv6 packet")
-		ip, _ := ipLayer.(*layers.IPv6)
-		srcIp = ip.SrcIP.String()
-		dstIp = ip.DstIP.String()
-	}
+	// ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	// if ipLayer != nil {
+	// 	fmt.Println("IPv4 packet")
+	// 	ip, _ := ipLayer.(*layers.IPv4)
+	// 	srcIp = ip.SrcIP.String()
+	// 	dstIp = ip.DstIP.String()
+	// }
+
+	// ipLayer = packet.Layer(layers.LayerTypeIPv6)
+	// if ipLayer != nil {
+	// 	fmt.Println("IPv6 packet")
+	// 	ip, _ := ipLayer.(*layers.IPv6)
+	// 	srcIp = ip.SrcIP.String()
+	// 	dstIp = ip.DstIP.String()
+	// }
 
 	var dnsID uint16
 	dnsLayer := packet.Layer(layers.LayerTypeDNS)
@@ -135,6 +129,8 @@ func analyzePacket(packet gopacket.Packet) {
 			} else if dnsQuestion.Type.String() == "AAAA" {
 				dnsQuestionTypeStr = "IPv6 DNS Question"
 			}
+			fmt.Println("dnsQuestionTypeStr: ", dnsQuestionTypeStr)
+			fmt.Println("dnsQuestion.Name: ", dnsQuestion.Name)
 			// fmt.Println("DNSQuestionName:", string(dnsQuestion.Name), "DNSQuestionType:", dnsQuestion.Type.String(), "-", dnsQuestionTypeStr)
 
 			// isQuestion
@@ -164,6 +160,11 @@ func analyzePacket(packet gopacket.Packet) {
 					dnsCounts.aIPs = append(dnsCounts.aIPs, ips)
 					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
 
+					// fmt.Println("dnsCounts.qCount: ", dnsCounts.qCount)
+					// fmt.Println("dnsCounts.aCount: ", dnsCounts.aCount)
+					// fmt.Println("dnsCounts.qTime: ", dnsCounts.qTime)
+					// fmt.Println("dnsCounts.aIPs: ", dnsCounts.aIPs)
+
 					if dnsCounts.qTime.Sub(time.Now()).Seconds() > MAX_SECONDS_ELAPSED {
 						
 						fmt.Println("Time limit exceeded for spoofed response, so deleting it form map")
@@ -172,7 +173,7 @@ func analyzePacket(packet gopacket.Packet) {
 						
 					} else if dnsCounts.aCount > dnsCounts.qCount {
 
-						fmt.Println(time.Now().Format("2006-01-02 15:04:05.000000") + "  DNS Spoofing attempt detected!")
+						fmt.Println(time.Now().Format("2006-01-02 15:04:05.000000") + " !!!!!!!!! DNS SPOOFING ATTEMPT DETECTED !!!!!!!!!")
 						// SImplifying it by assuming that the first question will always be the A type question
 						domainFromQuestion := string(dns.Questions[0].Name)
 						fmt.Println("TXID: " + strconv.Itoa(int(dnsID)) + ", DNSQuery: " + domainFromQuestion)
@@ -210,28 +211,6 @@ func main() {
 			fmt.Println("BPF filter specified by user: ", expression)
 		}
 	}
-
-	
-
-	/*interfacePtr := flag.String("i", "", "Interface to capture from. If blank a default interface will be chosen (Use either interface or file)")
-	filePtr := flag.String("r", "", "File to read packets from (Use either interface or file)")
-	// grepPtr := flag.String("s", "", "String to match in the packets")
-	flag.Parse()
-	expression := ""
-
-	argsArr := flag.Args()
-	if len(argsArr) > 0 {
-		expression = argsArr[0]
-	}
-
-	if *interfacePtr != "" && *filePtr != "" {
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
-
-	fmt.Printf("Using: \n\tInterface: %s\n\tFile: %s\n\tExpression: %s\n", *interfacePtr, *filePtr, expression)
-
-	*/
 
 	var handle *pcap.Handle
 	var err error
@@ -272,8 +251,6 @@ func main() {
 
 	fmt.Println("Getting packets from source!")
 	src := gopacket.NewPacketSource(handle, handle.LinkType())
-
-	// dumpcommand.Run(handle)
 
 	questionToAnswerMap = make(map[DNSQuestion]DNSCounts)
 

