@@ -89,24 +89,6 @@ func analyzePacket(packet gopacket.Packet) {
 	fmt.Println()
 	fmt.Println("======== New Packet =========")
 	packetTime := packet.Metadata().Timestamp
-	// srcIp := ""
-	// dstIp := ""
-
-	// ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	// if ipLayer != nil {
-	// 	fmt.Println("IPv4 packet")
-	// 	ip, _ := ipLayer.(*layers.IPv4)
-	// 	srcIp = ip.SrcIP.String()
-	// 	dstIp = ip.DstIP.String()
-	// }
-
-	// ipLayer = packet.Layer(layers.LayerTypeIPv6)
-	// if ipLayer != nil {
-	// 	fmt.Println("IPv6 packet")
-	// 	ip, _ := ipLayer.(*layers.IPv6)
-	// 	srcIp = ip.SrcIP.String()
-	// 	dstIp = ip.DstIP.String()
-	// }
 
 	var dnsID uint16
 	dnsLayer := packet.Layer(layers.LayerTypeDNS)
@@ -165,7 +147,7 @@ func analyzePacket(packet gopacket.Packet) {
 					// fmt.Println("dnsCounts.qTime: ", dnsCounts.qTime)
 					// fmt.Println("dnsCounts.aIPs: ", dnsCounts.aIPs)
 
-					if dnsCounts.qTime.Sub(time.Now()).Seconds() > MAX_SECONDS_ELAPSED {
+					if dnsCounts.qTime.Sub(packetTime).Seconds() > MAX_SECONDS_ELAPSED {
 						
 						fmt.Println("Time limit exceeded for spoofed response, so deleting it form map")
 						// Remove entry from the map, as we only consider packets returning in a short span of time
