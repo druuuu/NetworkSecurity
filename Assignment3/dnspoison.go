@@ -119,7 +119,19 @@ func main() {
 	defer handle.Close()
 
 	// handle.SetBPFFilter(pattern)
-	handle.SetBPFFilter(actualBpfFilter)
+	// handle.SetBPFFilter(actualBpfFilter)
+
+
+	if actualBpfFilter == "" {
+		actualBpfFilter = "udp and port 53"
+	} else if actualBpfFilter != "" {
+		actualBpfFilter = "udp and port 53 and " + actualBpfFilter
+		err = handle.SetBPFFilter(actualBpfFilter)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
