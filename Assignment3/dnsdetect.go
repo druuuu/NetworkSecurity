@@ -1,31 +1,15 @@
 package main
 
 import (
-	// "encoding/hex"
-	// "flag"
 	"fmt" //for loggin errors
 	"log"
 	"os"
 	"time"
-	//for parsing command line arguments
 	"strconv"
-
 	"github.com/google/gopacket" //for gopacket
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap" //for pcap
 )
-
-/*
-Using: 
-	Interface: 
-	File: dnsspooftrace.pcap
-	Expression: 
-Opening file! dnsspooftrace.pcapCreated handle!
-Printing error!
-2021/04/10 18:07:02 unknown file format
-exit status 1
-
-*/
 
 func getTargetInterface(inputInt string) string {
 	devices, _ := pcap.FindAllDevs()
@@ -77,7 +61,6 @@ func getEthernetTypeHex(ethernetType string) string {
 		// "Dot1Q":                       "0x88a8",
 		"TransparentEthernetBridging": "0x6558",
 	}
-
 	return m[ethernetType]
 }
 
@@ -103,7 +86,7 @@ const MAX_SECONDS_ELAPSED = 60
 
 func analyzePacket(packet gopacket.Packet) {
 
-	fmt.Println("=============== New Packet ===============")
+	// fmt.Println("=============== New Packet ===============")
 
 	// fmt.Println()
 	// fmt.Println()
