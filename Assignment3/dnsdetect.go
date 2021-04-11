@@ -1,271 +1,300 @@
-
-
 package main
 
 import (
-    "flag"
-    "fmt" //for loggin errors
-    "log"
-    "os"
-    "time"
+	// "encoding/hex"
+	// "flag"
+	"fmt" //for loggin errors
+	"log"
+	"os"
+	"time"
+	//for parsing command line arguments
+	"strconv"
 
-    //for parsing command line arguments
-    "strconv"
-
-    "github.com/google/gopacket" //for gopacket
-    "github.com/google/gopacket/layers"
-    "github.com/google/gopacket/pcap" //for pcap
+	"github.com/google/gopacket" //for gopacket
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap" //for pcap
 )
 
-var (
-    devName    string
-    es_index   string
-    es_docType string
-    es_server  string
-    err        error
-    handle     *pcap.Handle
-    InetAddr   string
-    SrcIP      string
-    DstIP      string
-)
+/*
+Using: 
+	Interface: 
+	File: dnsspooftrace.pcap
+	Expression: 
+Opening file! dnsspooftrace.pcapCreated handle!
+Printing error!
+2021/04/10 18:07:02 unknown file format
+exit status 1
 
-type DnsMsg struct {
-    Timestamp       string
-    SourceIP        string
-    DestinationIP   string
-    DnsQuery        string
-    DnsAnswer       []string
-    DnsAnswerTTL    []string
-    NumberOfAnswers string
-    DnsResponseCode string
-    DnsOpCode       string
+*/
+
+func getTargetInterface(inputInt string) string {
+	devices, _ := pcap.FindAllDevs()
+	nDevices := len(devices)
+	var availableDevices = make([]string, nDevices, nDevices)
+
+	inputIntAvailable := false
+
+	for i, device := range devices {
+		// fmt.Println("FullDevice", device, " Name: ", device.Name)
+		availableDevices[i] = device.Name
+
+		if device.Name == inputInt {
+			inputIntAvailable = true
+		}
+	}
+
+	if inputInt != "" && !inputIntAvailable {
+		fmt.Println("Invalid interface provided. Please use one of", availableDevices)
+		os.Exit(1)
+	}
+
+	if inputIntAvailable {
+		return inputInt
+	}
+
+	fmt.Println("Using default interface", availableDevices[0])
+	return availableDevices[0]
 }
 
-func isUniquePresent(listOne, listTwo []string) bool {
-    duplicate := false
-    for _, i := range listOne {
-        duplicate = false
-        for _, j := range listTwo {
-            if i == j {
-                duplicate = true
-                break
-            }
-        }
-        if !duplicate {
-            break
-        }
-    }
+func getEthernetTypeHex(ethernetType string) string {
+	var m = map[string]string{
+		"ARP":                "0x0806",
+		"CiscoDiscovery":     "0x2000",
+		"Dot1Q":              "0x8100",
+		"EAPOL":              "0x888e",
+		"ERSPAN":             "0x88be",
+		"EthernetCTP":        "0x9000",
+		"IPv4":               "0x0800",
+		"IPv6":               "0x86DD",
+		"LLC":                "0",
+		"LinkLayerDiscovery": "0x88cc",
+		"MPLSMulticast":      "0x8848",
+		"MPLSUnicast":        "0x8847",
+		"NortelDiscovery":    "0x01a2",
+		"PPP":                "0x880b",
+		"PPPoEDiscovery":     "0x8863",
+		"PPPoESession":       "0x8864",
+		// "Dot1Q":                       "0x88a8",
+		"TransparentEthernetBridging": "0x6558",
+	}
 
-    if duplicate {
-        for _, i := range listTwo {
-            duplicate = false
-            for _, j := range listOne {
-                if i == j {
-                    duplicate = true
-                    break
-                }
-            }
-            if !duplicate {
-                break
-            }
-        }
-    }
+	return m[ethernetType]
+}
 
-    return !duplicate
+type DNSQuestion struct {
+	uniqueID int // DNSID of the question or answer
+}
+
+type DNSCounts struct {
+	qCount int // number of questions sent
+	aCount int // number of answers received
+	aIPs [][]string
+	qTime time.Time
+}
+
+/**
+* Keep a map of DNSQuestion(uniqueID - dnsID) to DNSCounts(qCount - number of questions sent, aCount - number of answers received)
+* If you receive an answer for which there's not DNSQuestion present then HACKED
+* If count of answers till now > count of questions till now then HACKED
+**/
+var questionToAnswerMap map[DNSQuestion]DNSCounts
+
+const MAX_SECONDS_ELAPSED = 60
+
+func analyzePacket(packet gopacket.Packet) {
+
+	fmt.Println("=============== New Packet ===============")
+
+	// fmt.Println()
+	// fmt.Println()
+	// fmt.Println(questionToAnswerMap)
+	// fmt.Println()
+	// fmt.Println()
+
+	packetTime := packet.Metadata().Timestamp
+	srcIp := ""
+	dstIp := ""
+	// protocol := ""
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer != nil {
+		fmt.Println("IPv4 packet")
+		ip, _ := ipLayer.(*layers.IPv4)
+		srcIp = ip.SrcIP.String()
+		dstIp = ip.DstIP.String()
+	}
+
+	ipLayer = packet.Layer(layers.LayerTypeIPv6)
+	if ipLayer != nil {
+		fmt.Println("IPv6 packet")
+		ip, _ := ipLayer.(*layers.IPv6)
+		srcIp = ip.SrcIP.String()
+		dstIp = ip.DstIP.String()
+	}
+
+	var dnsID uint16
+	dnsLayer := packet.Layer(layers.LayerTypeDNS)
+	if dnsLayer != nil {
+		dns := dnsLayer.(*layers.DNS)
+		dnsID = dns.ID
+
+		isAnswer := (dns.ANCount > 0)
+
+		if isAnswer {
+			fmt.Println("ANSWER PACKET")
+		} else {
+			fmt.Println("QUESTION PACKET")
+		}
+
+		for _, dnsQuestion := range dns.Questions {
+			dnsQuestionTypeStr := ""
+			if dnsQuestion.Type.String() == "A" {
+				dnsQuestionTypeStr = "IPv4 DNS Question"
+			} else if dnsQuestion.Type.String() == "AAAA" {
+				dnsQuestionTypeStr = "IPv6 DNS Question"
+			}
+			// fmt.Println("DNSQuestionName:", string(dnsQuestion.Name), "DNSQuestionType:", dnsQuestion.Type.String(), "-", dnsQuestionTypeStr)
+
+			// isQuestion
+			if !isAnswer {
+
+				// fmt.Println("!!!!!!!!isQuestion")
+				if _, contains := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]; contains {
+					dnsCounts := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]
+					dnsCounts.qCount += 1
+					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
+				} else {
+					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = DNSCounts{qCount: 1, aCount: 0, qTime: packetTime, aIPs: make([][]string, 0)}
+				}
+
+			} else {
+
+				// fmt.Println("!!!!!!!!isAnswer")
+				if _, contains := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]; contains {
+					// fmt.Println("MAP CONTAINS ANSWERR")
+					dnsCounts := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]
+					dnsCounts.aCount += 1
+					ips := make([]string, 1)
+
+					for _, dnsAnswer := range dns.Answers {
+						ips = append(ips, dnsAnswer.IP.String())
+					}
+					dnsCounts.aIPs = append(dnsCounts.aIPs, ips)
+					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
+
+					if dnsCounts.qTime.Sub(time.Now()).Seconds() > MAX_SECONDS_ELAPSED {
+						
+						fmt.Println("Time limit exceeded for spoofed response, so deleting it form map")
+						// Remove entry from the map, as we only consider packets returning in a short span of time
+						delete(questionToAnswerMap, DNSQuestion{uniqueID: int(dnsID)})
+						
+					} else if dnsCounts.aCount > dnsCounts.qCount {
+
+						fmt.Println(time.Now().Format("2006-01-02 15:04:05.000000") + "  DNS Spoofing attempt detected!")
+						// SImplifying it by assuming that the first question will always be the A type question
+						domainFromQuestion := string(dns.Questions[0].Name)
+						fmt.Println("TXID: " + strconv.Itoa(int(dnsID)) + ", DNSQuery: " + domainFromQuestion)
+						for i := 0; i < len(dnsCounts.aIPs); i++ {
+							fmt.Printf("Answer" + strconv.Itoa(i) + " %v\n", dnsCounts.aIPs[i])
+						}
+						questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
+
+					}
+
+				}
+			}
+		}
+	}
+
 }
 
 func main() {
 
-    interfacePtr := flag.String("i", "", "Interface to capture from. If blank a default interface will be chosen (Use either interface or file)")
-    filePtr := flag.String("r", "", "File to read packets from (Use either interface or file)")
-    grepPtr := flag.String("s", "", "String to match in the packets")
-    flag.Parse()
-    expression := ""
+	var expression, fileName, iface string
 
-    argsArr := flag.Args()
-    if len(argsArr) > 0 {
-        expression = argsArr[0]
-    }
 
-    if *interfacePtr != "" && *filePtr != "" {
-        flag.PrintDefaults()
-        os.Exit(1)
-    }
+	for i, v := range os.Args {
+		if v == "-i" {
+			iface = os.Args[i+1]
+			fmt.Println("Interface specified by user: ", iface)
+		} else if v == "-r" && iface == "" {
+			fileName = os.Args[i+1]
+			fmt.Println("FileName to read packets from: ", fileName)
+		} else if i==1 && os.Args[i] != "-r" && os.Args[i] != "-i" && os.Args[i] != "-s" {
+			expression = os.Args[i]
+			fmt.Println("BPF filter specified by user: ", expression)
+		} else if i > 0 && os.Args[i-1] != "-r" && os.Args[i-1] != "-i" && os.Args[i-1] != "-s" {
+			expression = os.Args[i]
+			fmt.Println("BPF filter specified by user: ", expression)
+		}
+	}
 
-    fmt.Printf("Using: \n\tInterface: %s\n\tFile: %s\n\tFilterString: %s\n\tExpression: %s\n", *interfacePtr, *filePtr, *grepPtr, expression)
+	
 
-    var handle *pcap.Handle
-    var err error
+	/*interfacePtr := flag.String("i", "", "Interface to capture from. If blank a default interface will be chosen (Use either interface or file)")
+	filePtr := flag.String("r", "", "File to read packets from (Use either interface or file)")
+	// grepPtr := flag.String("s", "", "String to match in the packets")
+	flag.Parse()
+	expression := ""
 
-    // if *filePtr != "" {
-    //  handle, err = pcap.OpenOffline(*filePtr)
-    // } else {
-    //  var buffer = int32(1600)
-    //  targetInterface := getTargetInterface(*interfacePtr)
-    //  handle, err = pcap.OpenLive(targetInterface, buffer, true, 30)
-    // }
+	argsArr := flag.Args()
+	if len(argsArr) > 0 {
+		expression = argsArr[0]
+	}
 
-    handle, err = pcap.OpenLive("eth0", 1600, false, pcap.BlockForever)
+	if *interfacePtr != "" && *filePtr != "" {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
 
-    if err != nil {
-        log.Fatal(err)
-    }
+	fmt.Printf("Using: \n\tInterface: %s\n\tFile: %s\n\tExpression: %s\n", *interfacePtr, *filePtr, expression)
 
-    if expression != "" {
-        err = handle.SetBPFFilter(expression)
-        if err != nil {
-            log.Fatal(err)
-        }
-    }
+	*/
 
-    defer handle.Close()
+	var handle *pcap.Handle
+	var err error
 
-    var eth layers.Ethernet
-    var ip4 layers.IPv4
-    var ip6 layers.IPv6
-    var tcp layers.TCP
-    var udp layers.UDP
-    var dns layers.DNS
-    var payload gopacket.Payload
+	if fileName != "" {
+		fmt.Printf("Reading packets from file: " + fileName)
+		fmt.Println()
+		// fmt.Printlnt("Reading packets from file: " + *filePtr)
+		fileNameStr := fileName
+		handle, err = pcap.OpenOffline(fileNameStr)
+		fmt.Printf("Opening file! %s", fileName)
+	} else {
+		var buffer = int32(1600)
+		targetInterface := getTargetInterface(iface)
+		handle, err = pcap.OpenLive(targetInterface, buffer, true, 30)
+	}
 
-    parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip4, &ip6, &tcp, &udp, &dns, &payload)
-    decodedLayers := make([]gopacket.LayerType, 0, 10)
-    nameToDstToIdToIpList := make(map[string]map[string]map[string][]string)
-    queryTimeMap := make(map[string]time.Time)
-    fmt.Println("New maps created")
 
-    for {
+	fmt.Println("Created handle!")
 
-        data, _, err := handle.ReadPacketData()
-        if err != nil {
-            fmt.Println("Error reading packet data: ", err)
-            continue
-        }
+	if err != nil {
+		fmt.Println("Printing error!")
+		log.Fatal(err)
+		fmt.Println("Done Printing error!")
+	}
 
-        err = parser.DecodeLayers(data, &decodedLayers)
-        for _, typ := range decodedLayers {
-            switch typ {
-            case layers.LayerTypeIPv4:
-                SrcIP = ip4.SrcIP.String()
-                DstIP = ip4.DstIP.String()
-            case layers.LayerTypeIPv6:
-                SrcIP = ip6.SrcIP.String()
-                DstIP = ip6.DstIP.String()
-            case layers.LayerTypeDNS:
+	if expression == "" {
+		expression = "udp and port 53"
+	} else if expression != "" {
+		expression = "udp and port 53 and " + expression
+		err = handle.SetBPFFilter(expression)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
-                dnsOpCode := int(dns.OpCode)
-                dnsResponseCode := int(dns.ResponseCode)
-                dnsANCount := int(dns.ANCount)
-                // dnsID := string(dns.ANCount)
-                dnsID := strconv.Itoa(int(dns.ANCount))
+	defer handle.Close()
 
-                if (dnsANCount == 0 && dnsResponseCode > 0) || (dnsANCount > 0) {
+	fmt.Println("Getting packets from source!")
+	src := gopacket.NewPacketSource(handle, handle.LinkType())
 
-                    fmt.Println("------------------------")
-                    fmt.Println("    DNS Record Detected")
+	// dumpcommand.Run(handle)
 
-                    for _, dnsQuestion := range dns.Questions {
+	questionToAnswerMap = make(map[DNSQuestion]DNSCounts)
 
-                        t := time.Now()
-                        timestamp := t.Format(time.RFC3339)
-
-                        // Add a document to the index
-                        d := DnsMsg {
-							Timestamp: timestamp, SourceIP: SrcIP,
-                            DestinationIP:   DstIP,
-                            DnsQuery:        string(dnsQuestion.Name),
-                            DnsOpCode:       strconv.Itoa(dnsOpCode),
-                            DnsResponseCode: strconv.Itoa(dnsResponseCode),
-                            NumberOfAnswers: strconv.Itoa(dnsANCount)
-						}
-                        fmt.Println("    DNS OpCode: ", strconv.Itoa(int(dns.OpCode)))
-                        fmt.Println("    DNS ResponseCode: ", dns.ResponseCode.String())
-                        fmt.Println("    DNS # Answers: ", strconv.Itoa(dnsANCount))
-                        fmt.Println("    DNS Question: ", string(dnsQuestion.Name))
-                        fmt.Println("    DNS Endpoints: ", SrcIP, DstIP)
-
-                        fmt.Println(dns.ARCount, dns.ID, dns.NSCount, dns.QDCount, dns.Z)
-
-                        t1 := time.Now()
-                        // check if the map already has record for this domain name
-                        if _, containsQuestion := nameToDstToIdToIpList[string(dnsQuestion.Name)]; containsQuestion {
-                            // check if the already existing DNS question for this domain name is stale
-                            if t1.Sub(queryTimeMap[string(dnsQuestion.Name)]).Seconds() > 60 {
-                                // if stale, clear it from both maps
-                                fmt.Println("Clearing maps")
-                                delete(nameToDstToIdToIpList, string(dnsQuestion.Name))
-                                delete(queryTimeMap, string(dnsQuestion.Name))
-                            }
-                        }
-
-                        if _, containsName := nameToDstToIdToIpList[string(dnsQuestion.Name)]; !containsName {
-                            nameToDstToIdToIpList[string(dnsQuestion.Name)] = make(map[string]map[string][]string)
-                        }
-
-                        // add current time to the queryTimeMap to check next if it's stale next time
-                        queryTimeMap[string(dnsQuestion.Name)] = t1
-                        var currIPList []string
-
-                        if dnsANCount > 0 {
-
-                            for _, dnsAnswer := range dns.Answers {
-                                d.DnsAnswerTTL = append(d.DnsAnswerTTL, fmt.Sprint(dnsAnswer.TTL))
-                                if dnsAnswer.IP.String() != "<nil>" {
-                                    fmt.Println("    DNS Answer: ", dnsAnswer.IP.String())
-                                    currIPList = append(currIPList, dnsAnswer.IP.String())
-                                    //nameToDstToIpList[string(dnsQuestion.Name)][string(DstIP)] = append(nameToDstToIpList[string(dnsQuestion.Name)][string(DstIP)], dnsAnswer.IP.String())
-                                    d.DnsAnswer = append(d.DnsAnswer, dnsAnswer.IP.String())
-                                }
-                            }
-
-                        }
-
-                        fmt.Println("Map: ", nameToDstToIdToIpList)
-                        _, ok := nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID]
-                        fmt.Println("If check: ", ok, "question: ", string(dnsQuestion.Name), "dstIP:", string(DstIP), "dnsID: ", dnsID)
-                        // check if there are IP resolutions provided by for this question and DstIP already (we have already cleared them if stale on line 305)
-                        if _, containsQuestion := nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID]; containsQuestion {
-                            oldIPList := nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID]
-
-                            uniquePresent := isUniquePresent(oldIPList, currIPList)
-                            nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID] = currIPList
-
-                            if uniquePresent {
-                                fmt.Println("There is a difference between IPs provided within the last 1 minute by resolver. You might be under attack.")
-                                fmt.Println("OldIPList:", oldIPList)
-                                fmt.Println("NewIPList:", currIPList)
-                            } else {
-                                fmt.Println("NO ongoing attack.")
-                            }
-                        } else {
-                            fmt.Println("Setting the currIPList to map")
-                            if _, contain := nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)]; !contain {
-                                nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)] = make(map[string][]string)
-                            }
-                            nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID] = currIPList
-                            _, ok := nameToDstToIdToIpList[string(dnsQuestion.Name)][string(DstIP)][dnsID]
-                            fmt.Println("testing If check: ", ok, "question: ", string(dnsQuestion.Name), "dstIP:", string(DstIP), "dnsID: ", dnsID)
-                        }
-
-                    }
-                }
-
-            }
-            // t2 := time.Now()
-
-        }
-
-        // fmt.Println(nameToDstToIpList)
-
-        if err != nil {
-            fmt.Println("  Error encountered:", err)
-        }
-    }
-
-    // src := gopacket.NewPacketSource(handle, handle.LinkType())
-
-    // for packet := range src.Packets() {
-    //  printPacket(packet, *grepPtr)
-    // }
+	for packet := range src.Packets() {
+		analyzePacket(packet)
+	}
 }
-
