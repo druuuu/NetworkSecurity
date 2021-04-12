@@ -64,23 +64,18 @@ func getEthernetTypeHex(ethernetType string) string {
 	return m[ethernetType]
 }
 
-type DNSQuestion struct {
-	uniqueID int // DNSID of the question or answer
+type DNSTxid struct {
+	uniqueID int
 }
 
-type DNSCounts struct {
-	qCount int // number of questions sent
-	aCount int // number of answers received
+type DNSPktInfo struct {
+	qCount int
+	aCount int
 	aIPs [][]string
 	qTime time.Time
 }
 
-/**
-* Keep a map of DNSQuestion(uniqueID - dnsID) to DNSCounts(qCount - number of questions sent, aCount - number of answers received)
-* If you receive an answer for which there's not DNSQuestion present then HACKED
-* If count of answers till now > count of questions till now then HACKED
-**/
-var questionToAnswerMap map[DNSQuestion]DNSCounts
+var txidToPktCountMap map[DNSTxid]DNSPktInfo
 
 const MAX_SECONDS_ELAPSED = 60
 
@@ -119,51 +114,45 @@ func analyzePacket(packet gopacket.Packet) {
 			if !isAnswer {
 
 				// fmt.Println("!!!!!!!!isQuestion")
-				if _, contains := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]; contains {
-					dnsCounts := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]
-					dnsCounts.qCount += 1
-					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
+				if _, contains := txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}]; contains {
+					dnsPktInfo := txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}]
+					dnsPktInfo.qCount += 1
+					txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}] = dnsPktInfo
 				} else {
-					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = DNSCounts{qCount: 1, aCount: 0, qTime: packetTime, aIPs: make([][]string, 0)}
+					txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}] = DNSPktInfo{qCount: 1, aCount: 0, qTime: packetTime, aIPs: make([][]string, 0)}
 				}
 
 			} else {
 
 				// fmt.Println("!!!!!!!!isAnswer")
-				if _, contains := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]; contains {
+				if _, contains := txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}]; contains {
 					// fmt.Println("MAP CONTAINS ANSWERR")
-					dnsCounts := questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}]
-					dnsCounts.aCount += 1
+					dnsPktInfo := txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}]
+					dnsPktInfo.aCount += 1
 					ips := make([]string, 1)
 
 					for _, dnsAnswer := range dns.Answers {
 						ips = append(ips, dnsAnswer.IP.String())
 					}
-					dnsCounts.aIPs = append(dnsCounts.aIPs, ips)
-					questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
+					dnsPktInfo.aIPs = append(dnsPktInfo.aIPs, ips)
+					txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}] = dnsPktInfo
 
-					// fmt.Println("dnsCounts.qCount: ", dnsCounts.qCount)
-					// fmt.Println("dnsCounts.aCount: ", dnsCounts.aCount)
-					// fmt.Println("dnsCounts.qTime: ", dnsCounts.qTime)
-					// fmt.Println("dnsCounts.aIPs: ", dnsCounts.aIPs)
-
-					if dnsCounts.qTime.Sub(packetTime).Seconds() > MAX_SECONDS_ELAPSED {
+					if dnsPktInfo.qTime.Sub(packetTime).Seconds() > MAX_SECONDS_ELAPSED {
 						
 						fmt.Println("Time limit exceeded for spoofed response, so deleting it form map")
 						// Remove entry from the map, as we only consider packets returning in a short span of time
-						delete(questionToAnswerMap, DNSQuestion{uniqueID: int(dnsID)})
+						delete(txidToPktCountMap, DNSTxid{uniqueID: int(dnsID)})
 						
-					} else if dnsCounts.aCount > dnsCounts.qCount {
+					} else if dnsPktInfo.aCount > dnsPktInfo.qCount {
 
 						fmt.Println(time.Now().Format("2006-01-02 15:04:05.000000") + " !!!!!!!!! DNS SPOOFING ATTEMPT DETECTED !!!!!!!!!")
 						// SImplifying it by assuming that the first question will always be the A type question
 						domainFromQuestion := string(dns.Questions[0].Name)
 						fmt.Println("TXID: " + strconv.Itoa(int(dnsID)) + ", DNSQuery: " + domainFromQuestion)
-						for i := 0; i < len(dnsCounts.aIPs); i++ {
-							fmt.Printf("Answer" + strconv.Itoa(i) + " %v\n", dnsCounts.aIPs[i])
+						for i := 0; i < len(dnsPktInfo.aIPs); i++ {
+							fmt.Printf("Answer" + strconv.Itoa(i) + " %v\n", dnsPktInfo.aIPs[i])
 						}
-						questionToAnswerMap[DNSQuestion{uniqueID: int(dnsID)}] = dnsCounts
-
+						txidToPktCountMap[DNSTxid{uniqueID: int(dnsID)}] = dnsPktInfo
 					}
 
 				}
@@ -176,7 +165,6 @@ func analyzePacket(packet gopacket.Packet) {
 func main() {
 
 	var expression, fileName, iface string
-
 
 	for i, v := range os.Args {
 		if v == "-i" {
@@ -234,7 +222,7 @@ func main() {
 	fmt.Println("Getting packets from source!")
 	src := gopacket.NewPacketSource(handle, handle.LinkType())
 
-	questionToAnswerMap = make(map[DNSQuestion]DNSCounts)
+	txidToPktCountMap = make(map[DNSTxid]DNSPktInfo)
 
 	for packet := range src.Packets() {
 		analyzePacket(packet)
