@@ -1,43 +1,14 @@
 package main
 
 import (
-	"fmt" //for loggin errors
-	// "strings"
+	"fmt"
 	"os"
 	"io"
 	"net"
-	// "time"
 	"strconv"
 )
 
 
-
-// func startServer(host string, listenPort int) {
-	
-// 	// host = "localhost"
-
-// 	addr := fmt.Sprintf("%s:%d", host, listenPort)
-// 	listener, err := net.Listen("tcp", addr)
-  
-// 	if err != nil {
-// 		panic(err)
-// 	}
-  
-// 	fmt.Printf("Listening for connections on %s", listener.Addr().String())
-  
-// 	for {
-
-// 	  	conn, err := listener.Accept()
-// 	  	if err != nil {
-// 			fmt.Printf("Error accepting connection from client: %s", err)
-// 	  	}
-// 		//    else {
-// 		// 	go processClient(conn)
-// 	  	// }
-	
-// 	}
-
-// }
 
 func processConnectionToReverseProxy(conn net.Conn, destination string, destPort int) {
 	
@@ -53,14 +24,6 @@ func processConnectionToReverseProxy(conn net.Conn, destination string, destPort
 
 }
 
-// func processClient(conn net.Conn) {
-
-// 	_, err := io.Copy(os.Stdout, conn)
-// 	if err != nil {
-// 	  	fmt.Println(err)
-// 	}
-// 	conn.Close()
-// }
   
 func startClient(host string, destPort int) {
 
@@ -68,12 +31,12 @@ func startClient(host string, destPort int) {
 
 	conn, err := net.Dial("tcp", addr)
 
-
 	go readClient(conn)
 	if err != nil {
 	  	fmt.Printf("Can't connect to server: %s\n", err)
 	  	return
 	}
+	// encrypt and send
 	_, err = io.Copy(conn, os.Stdin)
 	if err != nil {
 	  	fmt.Printf("Connection error: %s\n", err)
@@ -85,38 +48,13 @@ func readClient(conn net.Conn){
 
 	for{
 		//copy(res, b[:n])
+
+		//decrypt and print
 		_, err := io.Copy(os.Stdout, conn)
 		if err != nil {
-			  	fmt.Println(err)
-			}
+			fmt.Println(err)
 		}
-
-
-	// c := make(chan []byte)
-
-    // go func() {
-    //     b := make([]byte, 1024)
-
-    //     for {
-    //         n, err := conn.Read(b)
-    //         if n > 0 {
-    //             res := make([]byte, n)
-    //             // Copy the buffer so it doesn't get changed while read by the recipient.
-    //             copy(res, b[:n])
-	// 				_, err := io.Copy(os.Stdout, conn)
-	// if err != nil {
-	//   	fmt.Println(err)
-	// }
-    //             c <- res
-    //         }
-    //         if err != nil {
-    //             c <- nil
-    //             break
-    //         }
-    //     }
-    // }()
-
-    // return c
+	}
 }
 
 
@@ -159,12 +97,14 @@ func Pipe(conn1 net.Conn, conn2 net.Conn) {
             if b1 == nil {
                 return
             } else {
+				// decrypt and write
                 conn2.Write(b1)
             }
         case b2 := <-chan2:
             if b2 == nil {
                 return
             } else {
+				// encrypt and write
                 conn1.Write(b2)
             }
         }
@@ -220,14 +160,9 @@ func main() {
 	fmt.Println("===========================")
 	fmt.Println()
 
-	// if (reverseProxy) {
-	// 	startServer("localhost", listenPort)
-	// } else {
-	// 	startClient("localhost", destPort)
-	// }
 
 	if (reverseProxy) {
-		// listenPort = 2222
+
 		addr := fmt.Sprintf("%s:%d", "192.168.111.129", listenPort)
 		listener, err := net.Listen("tcp", addr)
 	
@@ -240,39 +175,18 @@ func main() {
 		fmt.Printf("Listening for connections on %s", listener.Addr().String())
 	
 		for {
-
 			conn1, err := listener.Accept()
-			// received conn between client and 2222
-			// call this conn1
-
-			// now we gotta create (Dial?) a connection to 22 
-			// call this connection conn2
-			
-			// Then pipe conn1, conn2
-
-			// Pipe()
-
 
 			if err != nil {
 				fmt.Printf("Error accepting connection from client: %s", err)
 			} else {
-				// go processClient(conn)
 				go processConnectionToReverseProxy(conn1, destination, destPort)
 			}
 		}
 
 	} else {
-		// conn, err := net.Dial("tcp", "192.168.111.129:2222")
-		
-		// Dial a connection to "192.168.111.129" : port "2222"
-		// 
-
 		startClient("192.168.111.129", 2222)
 	}
-
-
-	
-
 
 }
 
