@@ -32,14 +32,6 @@ func processConnectionToReverseProxy(conn net.Conn, destination string, destPort
 }
 
 
-// func scanner() {
-// 	scanner := bufio.NewScanner(os.Stdin)
-// 	for scanner.Scan() {
-// 	//   fmt.Println(scanner.Text())
-// 		return scanner.Text()
-// 	}
-// }
-
 func chanFromStdin() chan []byte {
     c := make(chan []byte)
 
@@ -57,25 +49,6 @@ func chanFromStdin() chan []byte {
 				break
 			}
 
-			// b := make([]byte, 2097152)
-			// n, err := conn.Read(b)
-
-			// res := make([]byte, n)
-			// // Copy the buffer so it doesn't get changed while read by the recipient.
-			// copy(res, b[:n])
-			// c <- res
-
-            // n, err := conn.Read(b)
-            // if n > 0 {
-            //     res := make([]byte, n)
-            //     // Copy the buffer so it doesn't get changed while read by the recipient.
-            //     copy(res, b[:n])
-            //     c <- res
-            // }
-            // if err != nil {
-            //     c <- nil
-            //     break
-            // }
         }
     }()
 
@@ -83,44 +56,43 @@ func chanFromStdin() chan []byte {
 }
 
 
-// func encrypt() {
-// 	// ENCRYPT
-// 	nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-// 	aesgcm, err := cipher.NewGCM(blockKey)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-// 	ciphertext := aesgcm.Seal(nil, nonce, b3, nil)
-// 	fmt.Println("Writing encrypted text from stdin onto conn:")
-// 	fmt.Printf("%x\n", ciphertext)
-// 	// conn.Write(b3)
+func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
+	// ENCRYPT
+	nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
+	aesgcm, err := cipher.NewGCM(blockKey)
+	if err != nil {
+		panic(err.Error())
+	}
+	ciphertext := aesgcm.Seal(nil, nonce, toEncrypt, nil)
+	// fmt.Println("Writing encrypted text from stdin onto conn:")
+	// fmt.Printf("%x\n", ciphertext)
+	// conn.Write(b3)
 
-// 	if err != nil {
-// 		fmt.Printf("Connection error: %s\n", err)
-// 	}
-// 	return ciphertext
-// }
+	if err != nil {
+		fmt.Printf("Connection error: %s\n", err)
+	}
+	return ciphertext
+}
 
-// func decrypt(blockKey cipher.Block) {
-// 	// DECRYPT
-// 	nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-// 	aesgcm, err := cipher.NewGCM(blockKey)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-// 	plaintext, err := aesgcm.Open(nil, nonce, b1, nil)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-// 	fmt.Println("Writing decrypted text on os.Stdout:")
-// 	fmt.Printf("%s\n", plaintext)
-// 	// os.Stdout.Write(plaintext)
-	
-// 	// LOL Stdout IS fmt.Print!!
+func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
+	// DECRYPT
+	nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
+	aesgcm, err := cipher.NewGCM(blockKey)
+	if err != nil {
+		panic(err.Error())
+	}
+	plaintext, err := aesgcm.Open(nil, nonce, toDecrypt, nil)
+	if err != nil {
+		panic(err.Error())
+	}
+	// fmt.Println("Writing decrypted text on os.Stdout:")
+	// fmt.Printf("%s\n", plaintext)
 
-// 	// conn2.Write(b1)
-// 	return plaintext
-// }
+	// LOL Stdout IS fmt.Print!!
+
+	// conn2.Write(b1)
+	return plaintext
+}
 
 
 func startClient(host string, destPort int, blockKey cipher.Block) {
@@ -146,8 +118,9 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 		select {
 		case b3 := <-stdinchan:
 			if b3 != nil {
+				
 				// ENCRYPT
-				nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
+				/*nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
 				aesgcm, err := cipher.NewGCM(blockKey)
 				if err != nil {
 					panic(err.Error())
@@ -155,6 +128,10 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 				ciphertext := aesgcm.Seal(nil, nonce, b3, nil)
 				fmt.Println("Writing encrypted text from stdin onto conn:")
 				fmt.Printf("%x\n", ciphertext)
+				*/
+
+				ciphertext := encrypt(b3, blockKey)
+
 				// conn.Write(b3)
 				conn.Write(ciphertext)
 
@@ -189,6 +166,7 @@ func readClient(conn net.Conn, blockKey cipher.Block){
 					// decrypt and write
 	
 					// DECRYPT
+					/*
 					nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
 					aesgcm, err := cipher.NewGCM(blockKey)
 					if err != nil {
@@ -205,6 +183,10 @@ func readClient(conn net.Conn, blockKey cipher.Block){
 					// LOL Stdout IS fmt.Print!!
 
 					// conn2.Write(b1)
+					*/
+
+					plainText := decrypt(b1, blockKey)
+					fmt.Printf("%s\n", plainText)
 				}
 			}
 		}
@@ -263,6 +245,7 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 				// decrypt and write
 
 				// DECRYPT
+				/*
 				nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
 				aesgcm, err := cipher.NewGCM(blockKey)
 				if err != nil {
@@ -276,6 +259,9 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 				fmt.Printf("%s\n", plaintext)
 				conn2.Write(plaintext)
                 // conn2.Write(b1)
+				*/
+				plainText := decrypt(b1, blockKey)
+				conn2.Write(plainText)
 
             }
         case b2 := <-chan2:
@@ -292,6 +278,7 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 				// }
 
 				// ENCRYPT
+				/*
 				nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
 				aesgcm, err := cipher.NewGCM(blockKey)
 				if err != nil {
@@ -301,6 +288,10 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 				fmt.Println("Writing encrypted text back on conn1:")
 				fmt.Printf("%x\n", ciphertext)
                 // conn1.Write(b2)
+				*/
+
+				ciphertext := encrypt(b2, blockKey)
+
 				conn1.Write(ciphertext)
             }
 
