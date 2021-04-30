@@ -5,6 +5,7 @@ import (
 	"os"
 	"bufio"
 	"net"
+	"log"
 	"crypto/sha1"
 	"strconv"
 	"io/ioutil"
@@ -21,7 +22,7 @@ func processConnectionToReverseProxy(conn net.Conn, destination string, destPort
 	addr2 := fmt.Sprintf("%s:%d", destination, destPort)
 	conn2, err := net.Dial("tcp", addr2)
 	if err != nil {
-	  	fmt.Printf("Can't connect to server: %s\n", err)
+		log.Panicf("Can't connect to server: %s\n", err)
 	  	return
 	}
 	Pipe(conn, conn2, blockKey)
@@ -58,7 +59,7 @@ func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 	// fmt.Printf("%x\n", ciphertext)
 	// conn.Write(b3)
 	if err != nil {
-		fmt.Printf("Connection error: %s\n", err)
+		log.Panicf("Can't connect to server: %s\n", err)
 	}
 	return ciphertext
 }
@@ -68,11 +69,11 @@ func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 	nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
 	aesgcm, err := cipher.NewGCM(blockKey)
 	if err != nil {
-		panic(err.Error())
+		log.Panicf("Can't connect to server: %s\n", err.Error())
 	}
 	plaintext, err := aesgcm.Open(nil, nonce, toDecrypt, nil)
 	if err != nil {
-		panic(err.Error())
+		log.Panicf("Can't connect to server: %s\n", err.Error())
 	}
 	// fmt.Println("Writing decrypted text on os.Stdout:")
 	// fmt.Printf("%s\n", plaintext)
@@ -88,7 +89,7 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 	conn, err := net.Dial("tcp", addr)
 	go readClient(conn, blockKey)
 	if err != nil {
-	  	fmt.Printf("Can't connect to server: %s\n", err)
+		log.Panicf("Can't connect to server: %s\n", err)
 	  	return
 	}
 	// encrypt and send
@@ -103,7 +104,7 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 				conn.Write(ciphertext)
 
 				if err != nil {
-					fmt.Printf("Connection error: %s\n", err)
+					log.Panicf("Can't connect to server: %s\n", err.Error())
 				}
 			}
 		}
@@ -127,6 +128,7 @@ func readClient(conn net.Conn, blockKey cipher.Block){
 					// decrypt and write
 					// DECRYPT
 					plainText := decrypt(b1, blockKey)
+					// This is needed as it is Stdout
 					fmt.Printf("%s\n", plainText)
 				}
 			}
@@ -194,7 +196,8 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 
 func main() {
 
-	fmt.Println("Starting up PBProxy...")
+	// fmt.Println("Starting up PBProxy...")
+	log.Println("Starting up PBProxy...")
 
 	var destination, pwdfile, expression string
 	var listenPort, destPort int
@@ -209,7 +212,7 @@ func main() {
 		if v == "-l" {
 			listenPort, err = strconv.Atoi(os.Args[i+1])
 			if err != nil {
-				fmt.Println("Error!! :", err)
+				log.Panic("Error!! :", err)
 				// TODO: Exit from function! or throw exception?
 			}
 			reverseProxy = true
@@ -227,24 +230,25 @@ func main() {
 	destination = destArgs[0]
 	destPort, err = strconv.Atoi(destArgs[1])
 	if err != nil {
-		fmt.Println("Error!! :", err)
+		log.Panic("Error!! :", err)
 	}
 
-	fmt.Println("Reverse proxy mode: " + strconv.FormatBool(reverseProxy))
-	fmt.Println("Port to listen to as specified by user: ", listenPort)
-	fmt.Println("Passphrase to be read from file: ", pwdfile)
-	fmt.Println("Destination host as specified by user: ", destination)
-	fmt.Println("Destination port as specified by user: ", destPort)
+	log.Println("Reverse proxy mode: " + strconv.FormatBool(reverseProxy))
+	log.Println("Port to listen to as specified by user: ", listenPort)
+	log.Println("Passphrase to be read from file: ", pwdfile)
+	log.Println("Destination host as specified by user: ", destination)
+	log.Println("Destination port as specified by user: ", destPort)
 
-	fmt.Println()
-	fmt.Println("===========================")
-	fmt.Println()
+	log.Println()
+	log.Println("===========================")
+	log.Println()
 
 	salt := make([]byte, 12)
 
 	pwdKeyBytes, err := ioutil.ReadFile(pwdfile)
     if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
+		log.Panic("Error!! :", err)
     }
 
 	dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
@@ -260,13 +264,14 @@ func main() {
 			panic(err)
 		}
 	
-		fmt.Printf("Listening for connections on %s", listener.Addr().String())
+		log.Printf("Listening for connections on %s", listener.Addr().String())
 	
 		for {
 			conn1, err := listener.Accept()
 
 			if err != nil {
-				fmt.Printf("Error accepting connection from client: %s", err)
+				// fmt.Printf("Error accepting connection from client: %s", err)
+				log.Panicf("Error accepting connection from client: %s", err)
 			} else {
 				go processConnectionToReverseProxy(conn1, destination, destPort, block)
 			}
