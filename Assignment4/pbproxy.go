@@ -45,25 +45,15 @@ func chanFromStdin() chan []byte {
 }
 
 func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
-	// ENCRYPT
 	salt := []byte("test")
 	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
-
-	/*
-	
-	*/
-
 	block, err := aes.NewCipher(dk)
 	nonce := []byte("abcdef123456")
 	aesgcm, err := cipher.NewGCM(block)
-	//aesgcm, err := cipher.NewGCM(blockKey)
 	if err != nil {
 		panic(err.Error())
 	}
 	ciphertext := aesgcm.Seal(nil, nonce, toEncrypt, nil)
-	// fmt.Println("Writing encrypted text from stdin onto conn:")
-	// fmt.Printf("%x\n", ciphertext)
-	// conn.Write(b3)
 	if err != nil {
 		log.Println("Can't connect to server: ", err)
 	}
@@ -71,7 +61,6 @@ func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 }
 
 func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
-	// DECRYPT
 	salt := []byte("test")
 	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
 	block, err := aes.NewCipher(dk)
@@ -80,15 +69,10 @@ func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 	if err != nil {
 		log.Fatal("Can't connect to server: ", err.Error())
 	}
-	//log.Println(toDecrypt)
 	plaintext, err := aesgcm.Open(nil, nonce, toDecrypt, nil)
 	if err != nil {
 		log.Fatal("Decryption Failed:", err)
 	}
-	// fmt.Println("Writing decrypted text on os.Stdout:")
-	// fmt.Printf("%s\n", plaintext)
-	// LOL Stdout IS fmt.Print!!
-	// conn2.Write(b1)
 	return plaintext
 }
 
@@ -101,8 +85,6 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 		log.Println("Can't connect to server: ", err)
 		return
 	}
-	// encrypt and send
-	// _, err = io.Copy(conn, os.Stdin)
 	stdinchan := chanFromStdin()
 	for {
 		select {
@@ -123,10 +105,6 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 func readClient(conn net.Conn, blockKey cipher.Block) {
 	writer := bufio.NewWriter(os.Stdout)
 	for {
-		//copy(res, b[:n])
-
-		//decrypt and print
-		// _, err := io.Copy(os.Stdout, conn)
 		chan1 := chanFromConn(conn)
 		for {
 			select {
@@ -134,16 +112,9 @@ func readClient(conn net.Conn, blockKey cipher.Block) {
 				if b1 == nil {
 					return
 				} else {
-					// decrypt and write
-					// DECRYPT
-					//log.Println(b1)
 					plainText := decrypt(b1, blockKey)
-					//log.Println(plainText)
-					// This is needed as it is Stdout
-					//fmt.Printf("%s\n", plainText)
 					_, _ = writer.Write(plainText)
 					_ = writer.Flush()
-
 				}
 			}
 		}
@@ -151,8 +122,7 @@ func readClient(conn net.Conn, blockKey cipher.Block) {
 	}
 }
 
-// chanFromConn creates a channel from a Conn object, and sends everything it
-//  Read()s from the socket to the channel.
+
 func chanFromConn(conn net.Conn) chan []byte {
 	c := make(chan []byte)
 	go func() {
@@ -167,9 +137,6 @@ func chanFromConn(conn net.Conn) chan []byte {
 				break
 			}
 			if n > 0 {
-				//res := make([]byte, n)
-				// Copy the buffer so it doesn't get changed while read by the recipient.
-				//copy(res, b[:n])
 				c <- b[:n]
 			}
 			if err != nil {
@@ -181,19 +148,15 @@ func chanFromConn(conn net.Conn) chan []byte {
 	return c
 }
 
-// Pipe creates a full-duplex pipe between the two sockets and transfers data from one to the other.
 func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 	chan1 := chanFromConn(conn1)
 	chan2 := chanFromConn(conn2)
-
 	for {
 		select {
-
 		case b1 := <-chan1:
 			if b1 == nil {
 				return
 			} else {
-
 				// decrypt and write
 				// DECRYPT
 				plainText := decrypt(b1, blockKey)
@@ -203,21 +166,15 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 			if b2 == nil {
 				return
 			} else {
-				// encrypt and write
-				//log.Println(b2)
 				ciphertext := encrypt(b2, blockKey)
-				//log.Println(ciphertext)
 				conn1.Write(ciphertext)
 			}
-
 		}
-
 	}
 }
 
 func main() {
 
-	// fmt.Println("Starting up PBProxy...")
 	log.Println("Starting up PBProxy...")
 
 	var destination, pwdfile, expression string
@@ -234,7 +191,6 @@ func main() {
 			listenPort, err = strconv.Atoi(os.Args[i+1])
 			if err != nil {
 				log.Panic("Error!! :", err)
-				// TODO: Exit from function! or throw exception?
 			}
 			reverseProxy = true
 		} else if v == "-p" {
@@ -268,7 +224,6 @@ func main() {
 
 	pwdKeyBytes, err := ioutil.ReadFile(pwdfile)
 	if err != nil {
-		// fmt.Println(err)
 		log.Panic("Error!! :", err)
 	}
 
@@ -280,7 +235,6 @@ func main() {
 		addr := fmt.Sprintf("%s:%d", "192.168.111.129", listenPort)
 		listener, err := net.Listen("tcp", addr)
 
-		// listener = listening for connections between client and 2222
 		if err != nil {
 			panic(err)
 		}
@@ -289,9 +243,7 @@ func main() {
 
 		for {
 			conn1, err := listener.Accept()
-
 			if err != nil {
-				// fmt.Printf("Error accepting connection from client: %s", err)
 				log.Panicf("Error accepting connection from client: %s", err)
 			} else {
 				go processConnectionToReverseProxy(conn1, destination, destPort, block)
@@ -299,8 +251,6 @@ func main() {
 		}
 
 	} else {
-		// TODO: we made the client listen on IP and not localhost
-		// They'll run the code using localhost naa
 		startClient("192.168.111.129", 2222, block)
 	}
 
