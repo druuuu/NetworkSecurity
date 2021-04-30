@@ -18,28 +18,20 @@ import (
 
 
 func processConnectionToReverseProxy(conn net.Conn, destination string, destPort int, blockKey cipher.Block) {
-	
 	addr2 := fmt.Sprintf("%s:%d", destination, destPort)
-
 	conn2, err := net.Dial("tcp", addr2)
 	if err != nil {
 	  	fmt.Printf("Can't connect to server: %s\n", err)
 	  	return
 	}
-
 	Pipe(conn, conn2, blockKey)
-
 }
 
 
 func chanFromStdin() chan []byte {
     c := make(chan []byte)
-
     go func() {
-        // b := make([]byte, 1024)
-
         for {
-
 			reader := bufio.NewReader(os.Stdin)
 			text, err := reader.ReadString('\n')
 			if err == nil {
@@ -48,10 +40,8 @@ func chanFromStdin() chan []byte {
 				c <- nil
 				break
 			}
-
         }
     }()
-
     return c
 }
 
@@ -67,7 +57,6 @@ func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 	// fmt.Println("Writing encrypted text from stdin onto conn:")
 	// fmt.Printf("%x\n", ciphertext)
 	// conn.Write(b3)
-
 	if err != nil {
 		fmt.Printf("Connection error: %s\n", err)
 	}
@@ -87,9 +76,7 @@ func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 	}
 	// fmt.Println("Writing decrypted text on os.Stdout:")
 	// fmt.Printf("%s\n", plaintext)
-
 	// LOL Stdout IS fmt.Print!!
-
 	// conn2.Write(b1)
 	return plaintext
 }
@@ -98,41 +85,21 @@ func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 func startClient(host string, destPort int, blockKey cipher.Block) {
 
 	addr := fmt.Sprintf("%s:%d", host, destPort)
-
 	conn, err := net.Dial("tcp", addr)
-
 	go readClient(conn, blockKey)
 	if err != nil {
 	  	fmt.Printf("Can't connect to server: %s\n", err)
 	  	return
 	}
-
 	// encrypt and send
-	
 	// _, err = io.Copy(conn, os.Stdin)
-
 	stdinchan := chanFromStdin()
-
-
 	for {
 		select {
 		case b3 := <-stdinchan:
 			if b3 != nil {
-				
 				// ENCRYPT
-				/*nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-				aesgcm, err := cipher.NewGCM(blockKey)
-				if err != nil {
-					panic(err.Error())
-				}
-				ciphertext := aesgcm.Seal(nil, nonce, b3, nil)
-				fmt.Println("Writing encrypted text from stdin onto conn:")
-				fmt.Printf("%x\n", ciphertext)
-				*/
-
 				ciphertext := encrypt(b3, blockKey)
-
-				// conn.Write(b3)
 				conn.Write(ciphertext)
 
 				if err != nil {
@@ -141,9 +108,6 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 			}
 		}
 	}
-
-	
-
 }
 
 func readClient(conn net.Conn, blockKey cipher.Block){
@@ -152,9 +116,7 @@ func readClient(conn net.Conn, blockKey cipher.Block){
 		//copy(res, b[:n])
 
 		//decrypt and print
-
 		// _, err := io.Copy(os.Stdout, conn)
-
 		chan1 := chanFromConn(conn)
 		for {
 			select {
@@ -162,55 +124,24 @@ func readClient(conn net.Conn, blockKey cipher.Block){
 				if b1 == nil {
 					return
 				} else {
-	
 					// decrypt and write
-	
 					// DECRYPT
-					/*
-					nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-					aesgcm, err := cipher.NewGCM(blockKey)
-					if err != nil {
-						panic(err.Error())
-					}
-					plaintext, err := aesgcm.Open(nil, nonce, b1, nil)
-					if err != nil {
-						panic(err.Error())
-					}
-					fmt.Println("Writing decrypted text on os.Stdout:")
-					fmt.Printf("%s\n", plaintext)
-					// os.Stdout.Write(plaintext)
-					
-					// LOL Stdout IS fmt.Print!!
-
-					// conn2.Write(b1)
-					*/
-
 					plainText := decrypt(b1, blockKey)
 					fmt.Printf("%s\n", plainText)
 				}
 			}
 		}
 
-		// if err != nil {
-		// 	fmt.Println(err)
-		// }
 	}
 }
-
-
-// func encrypt() {
-
-// }
 
 
 // chanFromConn creates a channel from a Conn object, and sends everything it
 //  Read()s from the socket to the channel.
 func chanFromConn(conn net.Conn) chan []byte {
     c := make(chan []byte)
-
     go func() {
         b := make([]byte, 1024)
-
         for {
             n, err := conn.Read(b)
             if n > 0 {
@@ -225,7 +156,6 @@ func chanFromConn(conn net.Conn) chan []byte {
             }
         }
     }()
-
     return c
 }
 
@@ -243,55 +173,16 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
             } else {
 
 				// decrypt and write
-
 				// DECRYPT
-				/*
-				nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-				aesgcm, err := cipher.NewGCM(blockKey)
-				if err != nil {
-					panic(err.Error())
-				}
-				plaintext, err := aesgcm.Open(nil, nonce, b1, nil)
-				if err != nil {
-					panic(err.Error())
-				}
-				fmt.Println("Writing decrypted text on conn2:")
-				fmt.Printf("%s\n", plaintext)
-				conn2.Write(plaintext)
-                // conn2.Write(b1)
-				*/
 				plainText := decrypt(b1, blockKey)
 				conn2.Write(plainText)
-
             }
         case b2 := <-chan2:
             if b2 == nil {
                 return
             } else {
-
 				// encrypt and write
-
-				// Never use more than 2^32 random nonces with a given key because of the risk of a repeat.
-				// nonce := make([]byte, 12)
-				// if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-				// 	panic(err.Error())
-				// }
-
-				// ENCRYPT
-				/*
-				nonce, _ := hex.DecodeString("64a9433eae7ccceee2fc0eda")
-				aesgcm, err := cipher.NewGCM(blockKey)
-				if err != nil {
-					panic(err.Error())
-				}
-				ciphertext := aesgcm.Seal(nil, nonce, b2, nil)
-				fmt.Println("Writing encrypted text back on conn1:")
-				fmt.Printf("%x\n", ciphertext)
-                // conn1.Write(b2)
-				*/
-
 				ciphertext := encrypt(b2, blockKey)
-
 				conn1.Write(ciphertext)
             }
 
@@ -349,26 +240,15 @@ func main() {
 	fmt.Println("===========================")
 	fmt.Println()
 
-
-
 	salt := make([]byte, 12)
-
 
 	pwdKeyBytes, err := ioutil.ReadFile(pwdfile)
     if err != nil {
-        // log.Fatal(err)
 		fmt.Println(err)
     }
 
 	dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
-
-
 	block, err := aes.NewCipher(dk)
-
-
-
-
-
 
 	if (reverseProxy) {
 
@@ -376,7 +256,6 @@ func main() {
 		listener, err := net.Listen("tcp", addr)
 	
 		// listener = listening for connections between client and 2222
-
 		if err != nil {
 			panic(err)
 		}
