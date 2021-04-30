@@ -22,10 +22,10 @@ func processConnectionToReverseProxy(conn net.Conn, destination string, destPort
 		log.Panicf("Can't connect to server: %s\n", err)
 		return
 	}
-	Pipe(conn, conn2, pwdKeyBytes)
+	createTunnelBetnConnections(conn, conn2, pwdKeyBytes)
 }
 
-func chanFromStdin() chan []byte {
+func getChannelFromStdin() chan []byte {
 	c := make(chan []byte)
 	reader := bufio.NewReader(os.Stdin)
 	go func() {
@@ -78,7 +78,7 @@ func decrypt(toDecrypt []byte, pwdKeyBytes []byte) []byte {
 	return plaintext
 }
 
-func startClient(host string, destPort int, pwdKeyBytes []byte) {
+func connectToServer(host string, destPort int, pwdKeyBytes []byte) {
 
 	addr := fmt.Sprintf("%s:%d", host, destPort)
 	conn, err := net.Dial("tcp", addr)
@@ -87,7 +87,7 @@ func startClient(host string, destPort int, pwdKeyBytes []byte) {
 		log.Println("Can't connect to server: ", err)
 		return
 	}
-	stdinchan := chanFromStdin()
+	stdinchan := getChannelFromStdin()
 	for {
 		select {
 		case b3 := <-stdinchan:
@@ -107,10 +107,10 @@ func startClient(host string, destPort int, pwdKeyBytes []byte) {
 func readClient(conn net.Conn, pwdKeyBytes []byte) {
 	writer := bufio.NewWriter(os.Stdout)
 	for {
-		chan1 := chanFromConn(conn)
+		channel := getChannelFromConn(conn)
 		for {
 			select {
-			case b1 := <-chan1:
+			case b1 := <-channel:
 				if b1 == nil {
 					return
 				} else {
@@ -125,7 +125,7 @@ func readClient(conn net.Conn, pwdKeyBytes []byte) {
 }
 
 
-func chanFromConn(conn net.Conn) chan []byte {
+func getChannelFromConn(conn net.Conn) chan []byte {
 	c := make(chan []byte)
 	go func() {
 
@@ -150,21 +150,19 @@ func chanFromConn(conn net.Conn) chan []byte {
 	return c
 }
 
-func Pipe(conn1 net.Conn, conn2 net.Conn, pwdKeyBytes []byte) {
-	chan1 := chanFromConn(conn1)
-	chan2 := chanFromConn(conn2)
+func createTunnelBetnConnections(conn1 net.Conn, conn2 net.Conn, pwdKeyBytes []byte) {
+	channel1 := getChannelFromConn(conn1)
+	channel2 := getChannelFromConn(conn2)
 	for {
 		select {
-		case b1 := <-chan1:
+		case b1 := <-channel1:
 			if b1 == nil {
 				return
 			} else {
-				// decrypt and write
-				// DECRYPT
 				plainText := decrypt(b1, pwdKeyBytes)
 				conn2.Write(plainText)
 			}
-		case b2 := <-chan2:
+		case b2 := <-channel2:
 			if b2 == nil {
 				return
 			} else {
@@ -214,15 +212,10 @@ func main() {
 
 	log.Println("Passphrase to be read from file name: ", pwdfile)
 
-	// salt := make([]byte, 12)
-
 	pwdKeyBytes, err := ioutil.ReadFile(pwdfile)
 	if err != nil {
 		log.Panic("Error!! :", err)
 	}
-
-	// dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
-	// block, err := aes.NewCipher(dk)
 
 	if reverseProxy {
 		
@@ -256,7 +249,7 @@ func main() {
 		log.Println()
 		log.Println("===========================")
 		log.Println()
-		startClient(destination, destPort, pwdKeyBytes)
+		connectToServer(destination, destPort, pwdKeyBytes)
 	}
 
 }
