@@ -46,8 +46,17 @@ func chanFromStdin() chan []byte {
 
 func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 	// ENCRYPT
+	salt := []byte("test")
+	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
+
+	/*
+	
+	*/
+
+	block, err := aes.NewCipher(dk)
 	nonce := []byte("abcdef123456")
-	aesgcm, err := cipher.NewGCM(blockKey)
+	aesgcm, err := cipher.NewGCM(block)
+	//aesgcm, err := cipher.NewGCM(blockKey)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -63,15 +72,18 @@ func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 
 func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 	// DECRYPT
+	salt := []byte("test")
+	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
+	block, err := aes.NewCipher(dk)
 	nonce := []byte("abcdef123456")
-	aesgcm, err := cipher.NewGCM(blockKey)
+	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Println("Can't connect to server: ", err.Error())
+		log.Fatal("Can't connect to server: ", err.Error())
 	}
 	//log.Println(toDecrypt)
 	plaintext, err := aesgcm.Open(nil, nonce, toDecrypt, nil)
 	if err != nil {
-		log.Println("Decryption Failed:", err.Error())
+		log.Fatal("Decryption Failed:", err)
 	}
 	// fmt.Println("Writing decrypted text on os.Stdout:")
 	// fmt.Printf("%s\n", plaintext)
@@ -124,12 +136,14 @@ func readClient(conn net.Conn, blockKey cipher.Block) {
 				} else {
 					// decrypt and write
 					// DECRYPT
-
+					//log.Println(b1)
 					plainText := decrypt(b1, blockKey)
+					//log.Println(plainText)
 					// This is needed as it is Stdout
 					//fmt.Printf("%s\n", plainText)
 					_, _ = writer.Write(plainText)
 					_ = writer.Flush()
+
 				}
 			}
 		}
@@ -153,10 +167,10 @@ func chanFromConn(conn net.Conn) chan []byte {
 				break
 			}
 			if n > 0 {
-				res := make([]byte, n)
+				//res := make([]byte, n)
 				// Copy the buffer so it doesn't get changed while read by the recipient.
-				copy(res, b[:n])
-				c <- res
+				//copy(res, b[:n])
+				c <- b[:n]
 			}
 			if err != nil {
 				c <- nil
@@ -190,7 +204,9 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 				return
 			} else {
 				// encrypt and write
+				//log.Println(b2)
 				ciphertext := encrypt(b2, blockKey)
+				//log.Println(ciphertext)
 				conn1.Write(ciphertext)
 			}
 
@@ -285,7 +301,7 @@ func main() {
 	} else {
 		// TODO: we made the client listen on IP and not localhost
 		// They'll run the code using localhost naa
-		go startClient("192.168.111.129", 2222, block)
+		startClient("192.168.111.129", 2222, block)
 	}
 
 }
