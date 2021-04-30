@@ -15,14 +15,14 @@ import (
 	"strconv"
 )
 
-func processConnectionToReverseProxy(conn net.Conn, destination string, destPort int, blockKey cipher.Block) {
+func processConnectionToReverseProxy(conn net.Conn, destination string, destPort int, pwdKeyBytes []byte) {
 	addr2 := fmt.Sprintf("%s:%d", destination, destPort)
 	conn2, err := net.Dial("tcp", addr2)
 	if err != nil {
 		log.Panicf("Can't connect to server: %s\n", err)
 		return
 	}
-	Pipe(conn, conn2, blockKey)
+	Pipe(conn, conn2, pwdKeyBytes)
 }
 
 func chanFromStdin() chan []byte {
@@ -44,9 +44,10 @@ func chanFromStdin() chan []byte {
 	return c
 }
 
-func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
+func encrypt(toEncrypt []byte, pwdKeyBytes []byte) []byte {
 	salt := []byte("test")
-	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
+	// salt := pwdKeyBytes
+	dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
 	block, err := aes.NewCipher(dk)
 	nonce := []byte("abcdef123456")
 	aesgcm, err := cipher.NewGCM(block)
@@ -60,9 +61,10 @@ func encrypt(toEncrypt []byte, blockKey cipher.Block) []byte {
 	return ciphertext
 }
 
-func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
+func decrypt(toDecrypt []byte, pwdKeyBytes []byte) []byte {
 	salt := []byte("test")
-	dk := pbkdf2.Key([]byte("test"), salt, 4096, 32, sha1.New)
+	// salt := pwdKeyBytes
+	dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
 	block, err := aes.NewCipher(dk)
 	nonce := []byte("abcdef123456")
 	aesgcm, err := cipher.NewGCM(block)
@@ -76,11 +78,11 @@ func decrypt(toDecrypt []byte, blockKey cipher.Block) []byte {
 	return plaintext
 }
 
-func startClient(host string, destPort int, blockKey cipher.Block) {
+func startClient(host string, destPort int, pwdKeyBytes []byte) {
 
 	addr := fmt.Sprintf("%s:%d", host, destPort)
 	conn, err := net.Dial("tcp", addr)
-	go readClient(conn, blockKey)
+	go readClient(conn, pwdKeyBytes)
 	if err != nil {
 		log.Println("Can't connect to server: ", err)
 		return
@@ -91,7 +93,7 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 		case b3 := <-stdinchan:
 			if b3 != nil {
 				// ENCRYPT
-				ciphertext := encrypt(b3, blockKey)
+				ciphertext := encrypt(b3, pwdKeyBytes)
 				conn.Write(ciphertext)
 
 				if err != nil {
@@ -102,7 +104,7 @@ func startClient(host string, destPort int, blockKey cipher.Block) {
 	}
 }
 
-func readClient(conn net.Conn, blockKey cipher.Block) {
+func readClient(conn net.Conn, pwdKeyBytes []byte) {
 	writer := bufio.NewWriter(os.Stdout)
 	for {
 		chan1 := chanFromConn(conn)
@@ -112,7 +114,7 @@ func readClient(conn net.Conn, blockKey cipher.Block) {
 				if b1 == nil {
 					return
 				} else {
-					plainText := decrypt(b1, blockKey)
+					plainText := decrypt(b1, pwdKeyBytes)
 					_, _ = writer.Write(plainText)
 					_ = writer.Flush()
 				}
@@ -148,7 +150,7 @@ func chanFromConn(conn net.Conn) chan []byte {
 	return c
 }
 
-func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
+func Pipe(conn1 net.Conn, conn2 net.Conn, pwdKeyBytes []byte) {
 	chan1 := chanFromConn(conn1)
 	chan2 := chanFromConn(conn2)
 	for {
@@ -159,14 +161,14 @@ func Pipe(conn1 net.Conn, conn2 net.Conn, blockKey cipher.Block) {
 			} else {
 				// decrypt and write
 				// DECRYPT
-				plainText := decrypt(b1, blockKey)
+				plainText := decrypt(b1, pwdKeyBytes)
 				conn2.Write(plainText)
 			}
 		case b2 := <-chan2:
 			if b2 == nil {
 				return
 			} else {
-				ciphertext := encrypt(b2, blockKey)
+				ciphertext := encrypt(b2, pwdKeyBytes)
 				conn1.Write(ciphertext)
 			}
 		}
@@ -210,48 +212,51 @@ func main() {
 		log.Panic("Error!! :", err)
 	}
 
-	log.Println("Reverse proxy mode: " + strconv.FormatBool(reverseProxy))
-	log.Println("Port to listen to as specified by user: ", listenPort)
-	log.Println("Passphrase to be read from file: ", pwdfile)
-	log.Println("Destination host as specified by user: ", destination)
-	log.Println("Destination port as specified by user: ", destPort)
+	log.Println("Passphrase to be read from file name: ", pwdfile)
 
-	log.Println()
-	log.Println("===========================")
-	log.Println()
-
-	salt := make([]byte, 12)
+	// salt := make([]byte, 12)
 
 	pwdKeyBytes, err := ioutil.ReadFile(pwdfile)
 	if err != nil {
 		log.Panic("Error!! :", err)
 	}
 
-	dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
-	block, err := aes.NewCipher(dk)
+	// dk := pbkdf2.Key(pwdKeyBytes, salt, 4096, 32, sha1.New)
+	// block, err := aes.NewCipher(dk)
 
 	if reverseProxy {
-
-		addr := fmt.Sprintf("%s:%d", "192.168.111.129", listenPort)
+		
+		log.Println("Reverse proxy mode enabled!")
+		log.Println("Port to listen to as specified by user: ", listenPort)
+		log.Println("Destination host as specified by user: ", destination)
+		log.Println("Destination port as specified by user: ", destPort)
+		log.Println()
+		log.Println("===========================")
+		log.Println()
+		addr := fmt.Sprintf("%s:%d", destination, listenPort)
 		listener, err := net.Listen("tcp", addr)
-
 		if err != nil {
 			panic(err)
 		}
-
 		log.Printf("Listening for connections on %s", listener.Addr().String())
-
 		for {
 			conn1, err := listener.Accept()
 			if err != nil {
 				log.Panicf("Error accepting connection from client: %s", err)
 			} else {
-				go processConnectionToReverseProxy(conn1, destination, destPort, block)
+				go processConnectionToReverseProxy(conn1, destination, destPort, pwdKeyBytes)
 			}
 		}
 
 	} else {
-		startClient("192.168.111.129", 2222, block)
+
+		log.Println("Client mode enabled!")
+		log.Println("Port on the server to connect to: ", destPort)
+		log.Println("Destination host as specified by user: ", destination)
+		log.Println()
+		log.Println("===========================")
+		log.Println()
+		startClient(destination, destPort, pwdKeyBytes)
 	}
 
 }
